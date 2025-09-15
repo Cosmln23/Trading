@@ -118,20 +118,27 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
 
                     collection = map_collection(strategy)
                     doc_id = f"upload:{name}"
-                    chunks = split_text(text)
-                    vectors = vertex_embed_batch(chunks) or [None] * len(chunks)
+                    chunks = split_text(text, max_chars=3500, overlap=500)
+                    # Batch embeddings (size 32)
+                    vectors = []
+                    batch = 32
+                    for s in range(0, len(chunks), batch):
+                        part = vertex_embed_batch(chunks[s:s+batch]) or [None] * len(chunks[s:s+batch])
+                        vectors.extend(part)
                     with get_conn().cursor() as cur:
                         for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
                             frag_id = uuid.uuid4().hex
+                            # Dedup via chunk_hash
+                            ch = hashlib.md5(chunk.encode('utf-8', errors='ignore')).hexdigest()
                             if emb_col is None or vec is None:
                                 cur.execute(
-                                    "INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text) VALUES (%s,%s,%s,%s,%s,%s)",
-                                    (frag_id, doc_id, collection, None, idx, chunk[:4000])
+                                    "INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
+                                    (frag_id, doc_id, collection, None, idx, chunk[:4000], ch)
                                 )
                             else:
                                 cur.execute(
-                                    f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                                    (frag_id, doc_id, collection, None, idx, chunk[:4000], vec)
+                                    f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
+                                    (frag_id, doc_id, collection, None, idx, chunk[:4000], vec, ch)
                                 )
                             ingest_count += 1
                             if vec is not None:
