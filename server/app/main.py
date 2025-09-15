@@ -5,6 +5,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.responses import Response, FileResponse
 from pathlib import Path
 import os
+import logging
 import base64
 import psycopg
 
@@ -15,6 +16,9 @@ from .upload import router as upload_router
 from .journal import router as journal_router
 
 app = FastAPI(title="Trading Assistant API", version="1.0.0")
+
+# Ensure INFO logs (including answer_timing) are emitted to stdout
+logging.basicConfig(level=logging.INFO)
 
 GATE_USERNAME = os.getenv("GATE_USERNAME", "")
 GATE_PASSWORD = os.getenv("GATE_PASSWORD", "")

@@ -36,9 +36,11 @@
   const mobileActions = document.getElementById('mobileActions');
 
   const btnBrief = document.getElementById('btnBrief');
+  const btnGuide = document.getElementById('btnGuide');
   const mBtnBrief = document.getElementById('mBtnBrief');
   const briefModal = document.getElementById('briefModal');
   const refreshBrief = document.getElementById('refreshBrief');
+  const guideModal = document.getElementById('guideModal');
   const macroStance = document.getElementById('macroStance');
   const macroNotes = document.getElementById('macroNotes');
   const ideasWrap = document.getElementById('ideasWrap');
@@ -71,6 +73,7 @@
   const uploadList = document.getElementById('uploadList');
   const uploadStrategy = document.getElementById('uploadStrategy');
   const btnStartUpload = document.getElementById('btnStartUpload');
+  let toastTimer = null;
 
   const btnSettings = document.getElementById('btnSettings');
   const mBtnSettings = document.getElementById('mBtnSettings');
@@ -96,6 +99,108 @@
   document.getElementById('chipReranker')?.parentElement?.setAttribute('title', 'Reranker = ON/OFF');
   document.getElementById('chipMMR')?.parentElement?.setAttribute('title', 'MMR = diversitate rezultate');
   document.getElementById('chipRecency')?.parentElement?.setAttribute('title', 'Recency boost = folosire știri recente');
+
+  // Inline info popovers (accessible)
+  const POPOVER_TEXT = {
+    // Strategii
+    strat_EQ_INV: 'Cumperi companii/ETF-uri solide și ții ani. Câștigul vine din creșterea firmei + dividende. Riscul: scăderi temporare mari; nu urmărești mișcările zilnice. Urmărește profituri în creștere, datorii ok, costuri mici.',
+    strat_EQ_MOM: 'Cumperi acțiuni care deja urcă și au vești bune la raportări; mizezi pe continuarea trendului. Confirmări: preț peste MA200, volum mare după rezultate, “gap” pozitiv. Riscul: întoarceri rapide după hype.',
+    strat_OPT_INC: 'Vinzi opțiuni acoperite ca să încasezi prime regulat (covered call / cash-secured put). Câștigul e mai lent și stabil; limitezi upside-ul și suporți riscul mișcărilor mari. Necesită colateral și reguli stricte.',
+    // Parametri retrieval
+    K: 'Câte fragmente de text căutăm la început. Mai mare ⇒ căutăm mai mult (mai lent), șanse mai bune să găsim ceva util.',
+    N: 'Câte fragmente păstrăm după reordonare. Acestea ajung la LLM. Mai mic ⇒ răspuns mai precis/curat.',
+    tau: 'Scor minim de relevanță (0–1). Sub τ, fragmentul este ignorat. τ mai mare ⇒ răspuns mai sigur.',
+    reranker: 'O a doua triere “inteligentă” care aduce în față fragmentele cel mai potrivite întrebării tale.',
+    mmr: 'Asigură diversitate în top‑N; evită 5 fragmente aproape identice.',
+    // Termeni macro
+    cpi: 'Inflația la consumatori. Sub așteptări ⇒ presiune mai mică pe dobânzi ⇒ sprijin pentru active de risc.',
+    nfp: 'Locuri de muncă noi (SUA). Cifre stabile ⇒ piață a muncii solidă; surprize mari pot mișca piața puternic.',
+    realyields: 'Dobânzi reale = randamente titluri − inflație. Când scad, activele de risc (și aurul) sunt, în medie, ajutate.',
+    // Decizii LLM
+    thesis: 'Ideea centrală, scurtă, cu surse [n]. Fără citări ⇒ nu apare.',
+    setup: 'Condițiile care trebuie să fie adevărate pentru idee (tehnic/fundamental).',
+    invalidation: 'Semnalul de “renunțare”. Dacă apare, ieși și nu insiști.',
+    levels: 'Prețuri cheie: intrare / stop / țintă (TP). Ajută la disciplină.',
+    riskunc: 'Estimare simplă (low/med/high). Nu e garanție; doar nivel de încredere.',
+    // Sinonime simple
+    syn_reranker: 're-ordonator inteligent',
+    syn_mmr: 'diversitate în rezultate',
+    syn_tau: 'prag minim de relevanță',
+    syn_earnings: 'raport trimestrial & efectul de continuare după vești bune',
+    syn_gap: 'salt de preț la deschidere',
+    syn_follow: 'continuarea mișcării',
+    syn_iv: 'așteptarea de mișcare din prețul opțiunilor',
+    syn_delta: 'probabilitate ~30% ca opțiunea să rămână “în bani”',
+    syn_drawdown: 'scădere față de vârful capitalului',
+    syn_liquidity: 'ușurința de a cumpăra/vinde (volum, spread)'
+  };
+
+  function closeAllPopovers(){ document.querySelectorAll('.popover-card').forEach(p => p.remove()); }
+  function makePopover(target, key){
+    closeAllPopovers();
+    const text = POPOVER_TEXT[key] || '';
+    const pop = document.createElement('div');
+    pop.className = 'popover-card absolute z-50 mt-1 max-w-sm rounded-lg border bg-white shadow p-2 text-xs text-gray-700';
+    pop.setAttribute('role', 'dialog');
+    pop.tabIndex = -1;
+    pop.innerHTML = `<div class="flex items-start gap-2"><div class="flex-1">${text}</div><button class="p-1 rounded hover:bg-gray-100" aria-label="Închide"><i data-lucide="x" class="w-3.5 h-3.5"></i></button></div>`;
+    const rect = target.getBoundingClientRect();
+    pop.style.left = Math.max(8, rect.left + window.scrollX) + 'px';
+    pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    document.body.appendChild(pop);
+    mountIcons();
+    const closer = pop.querySelector('button');
+    function close(){ pop.remove(); target.setAttribute('aria-expanded','false'); }
+    closer.addEventListener('click', close);
+    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeAllPopovers(); }, { once: true });
+    document.addEventListener('click', (e)=>{ if (!pop.contains(e.target) && e.target !== target) closeAllPopovers(); }, { once: true, capture: true });
+    pop.focus();
+  }
+
+  // Attach info buttons dynamically
+  function attachInfo(){
+    // Strategy labels: add info buttons next to tabs once
+    document.querySelectorAll('[role="tablist"] .tab-btn').forEach(btn => {
+      if (btn.querySelector('.info-inline')) return;
+      const info = document.createElement('button'); info.type='button'; info.className='info-inline ml-1 inline-flex items-center justify-center rounded p-0.5 text-gray-600 hover:bg-gray-100'; info.setAttribute('aria-expanded','false'); info.setAttribute('aria-label', `Detalii: ${btn.textContent}`);
+      info.innerHTML = '<i data-lucide="info" class="w-3.5 h-3.5"></i>';
+      btn.appendChild(info);
+      const key = btn.textContent.includes('EQ-INV') ? 'strat_EQ_INV' : (btn.textContent.includes('MOM') ? 'strat_EQ_MOM' : 'strat_OPT_INC');
+      info.addEventListener('click', (e)=>{ e.stopPropagation(); info.setAttribute('aria-expanded','true'); makePopover(info, key); });
+      info.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); info.click(); }});
+    });
+
+    // Chips K/N/tau/Reranker/MMR
+    const chipMap = [ ['chipK','K'], ['chipN','N'], ['chipTau','tau'], ['chipReranker','reranker'], ['chipMMR','mmr'] ];
+    chipMap.forEach(([id, key]) => {
+      const chip = document.getElementById(id)?.parentElement; if (!chip || chip.querySelector('.info-inline')) return;
+      const b = document.createElement('button'); b.type='button'; b.className='info-inline ml-1 inline-flex items-center justify-center rounded p-0.5 text-gray-600 hover:bg-gray-100'; b.setAttribute('aria-expanded','false'); b.setAttribute('aria-label', `Detalii: ${id}`); b.innerHTML='<i data-lucide="help-circle" class="w-3.5 h-3.5"></i>';
+      chip.appendChild(b); b.addEventListener('click', ()=>{ b.setAttribute('aria-expanded','true'); makePopover(b, key); }); b.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); }});
+    });
+
+    // Macro legends buttons already in DOM: add handlers
+    document.querySelectorAll('#macroLegend .info-inline').forEach(btn => {
+      const key = btn.getAttribute('data-popover');
+      btn.addEventListener('click', (e)=>{ e.stopPropagation(); btn.setAttribute('aria-expanded','true'); makePopover(btn, key); });
+      btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); btn.click(); }});
+    });
+
+    // Answer card labels
+    const answerMap = [ ['labelThesis','thesis'], ['labelSetup','setup'], ['labelInvalidation','invalidation'], ['labelLevels','levels'] ];
+    answerMap.forEach(([id,key]) => {
+      const lab = document.getElementById(id); if (!lab || lab.querySelector('.info-inline')) return;
+      const b = document.createElement('button'); b.type='button'; b.className='info-inline ml-1 inline-flex items-center justify-center rounded p-0.5 text-gray-600 hover:bg-gray-100'; b.setAttribute('aria-expanded','false'); b.setAttribute('aria-label', `Detalii: ${key}`); b.innerHTML='<i data-lucide="info" class="w-3.5 h-3.5"></i>';
+      lab.appendChild(b); b.addEventListener('click', ()=>{ b.setAttribute('aria-expanded','true'); makePopover(b, key); }); b.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); }});
+    });
+  }
+
+  // Help/Dex modal
+  const helpDexBtn = document.getElementById('helpDexBtn');
+  const helpDexModal = document.getElementById('helpDexModal');
+  function openHelp(){ helpDexModal?.classList.remove('hidden'); mountIcons(); }
+  function closeHelp(){ helpDexModal?.classList.add('hidden'); }
+  helpDexBtn?.addEventListener('click', openHelp);
+  document.querySelectorAll('[data-close-help]')?.forEach(b => b.addEventListener('click', closeHelp));
 
   function setActiveTabUI(tab){
     setActiveTab(tab);
@@ -236,6 +341,12 @@
   function closeBrief(){ briefModal.classList.add('hidden'); }
   document.querySelectorAll('[data-close-brief]').forEach(b => b.addEventListener('click', closeBrief));
   btnBrief?.addEventListener('click', openBrief); mBtnBrief?.addEventListener('click', openBrief);
+
+  // Guide modal
+  function openGuide(){ guideModal.classList.remove('hidden'); }
+  function closeGuide(){ guideModal.classList.add('hidden'); }
+  btnGuide?.addEventListener('click', openGuide);
+  document.querySelectorAll('[data-close-guide]').forEach(b => b.addEventListener('click', closeGuide));
 
   async function loadBrief(){
     try{
@@ -423,8 +534,29 @@
   dropzone.addEventListener('drop', (e) => { filesQueue = Array.from(e.dataTransfer.files || []); renderUploads(filesQueue); });
   fileInput.addEventListener('change', (e) => { filesQueue = Array.from(e.target.files || []); renderUploads(filesQueue); });
   btnStartUpload.addEventListener('click', async () => {
-    if (!filesQueue.length) return; try{ const res = await postUpload(filesQueue, uploadStrategy.value); setUploads(res); renderUploads(res); }catch(e){ /* silent */ }
+    if (!filesQueue.length) return;
+    try{
+      const res = await postUpload(filesQueue, uploadStrategy.value);
+      setUploads(res);
+      renderUploads(res);
+      // Success toast
+      showToast(`Upload finalizat: ${res.filter(x=>x.status==='accepted').length} acceptate, ${res.filter(x=>x.status==='dedup').length} dedup, ${res.filter(x=>x.status==='rejected').length} respinse`);
+    }catch(e){ /* silent */ }
   });
+
+  // Toast helper
+  function showToast(message){
+    let el = document.getElementById('toast');
+    if (!el){
+      el = document.createElement('div'); el.id = 'toast';
+      el.className = 'fixed bottom-4 right-4 z-50 px-3 py-2 rounded-lg shadow-lg border bg-white text-sm text-gray-800';
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>{ el.classList.add('hidden'); }, 3000);
+  }
 
   // Settings modal
   function openSettings(){ settingsModal.classList.remove('hidden'); }
@@ -462,6 +594,7 @@
     mountIcons();
     syncMockUI();
     await loadSettings();
+    attachInfo();
   });
 })();
 

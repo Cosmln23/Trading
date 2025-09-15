@@ -17,6 +17,72 @@
       <div class="absolute inset-0 bg-white/60"></div>
     </div>
 
+    <!-- Help/Dex Sticky Button -->
+    <button id="helpDexBtn" class="fixed left-4 bottom-4 z-50 inline-flex items-center gap-2 px-3 py-2 rounded-full shadow-lg bg-gray-900 text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/20">
+      <i data-lucide="info" class="w-4 h-4"></i>
+      <span class="text-sm font-medium">Ajutor / Dex</span>
+    </button>
+
+    <!-- Help/Dex Modal -->
+    <div id="helpDexModal" class="hidden fixed inset-0 z-50">
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="relative mx-auto my-8 w-[95%] max-w-3xl bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center gap-2">
+            <i data-lucide="book-open-text" class="w-5 h-5 text-gray-700"></i>
+            <h2 class="text-lg tracking-tight font-semibold">Ghid rapid / Dex</h2>
+          </div>
+          <button data-close-help class="p-2 rounded-lg border bg-gray-50 hover:bg-gray-100" aria-label="Închide">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="p-4 space-y-4 max-h-[70vh] overflow-auto text-sm">
+          <div class="rounded-lg border bg-gray-50/70 p-3">
+            <div class="font-semibold mb-1">Strategii</div>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><span class="font-medium">EQ-INV</span>: investiții pe termen lung (acțiuni/ETF), focus pe quality și rebalansare.</li>
+              <li><span class="font-medium">EQ-MOM/PEAD</span>: momentum și catalizatori de earnings (gap, volum, follow-through).</li>
+              <li><span class="font-medium">OPT-INCOME</span>: venit din opțiuni (covered calls, cash‑secured puts) cu risc controlat.</li>
+            </ul>
+          </div>
+          <div class="rounded-lg border bg-gray-50/70 p-3">
+            <div class="font-semibold mb-1">Parametri retrieval</div>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><span class="font-medium">K</span>: câte pasaje se caută în prima etapă (ex. 16–24).</li>
+              <li><span class="font-medium">N</span>: câte pasaje rămân după reranker (ex. 3–5).</li>
+              <li><span class="font-medium">τ</span>: prag minim de relevanță (0–1). Sub prag → nu afișăm pasajul.</li>
+              <li><span class="font-medium">Reranker</span>: reordonare mai bună a pasajelor relevante.</li>
+              <li><span class="font-medium">MMR</span>: diversitate în top‑N (evită duplicatele).</li>
+            </ul>
+          </div>
+          <div class="rounded-lg border bg-gray-50/70 p-3">
+            <div class="font-semibold mb-1">Termeni macro (exemple)</div>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><span class="font-medium">CPI</span>: inflația de consum; sub așteptări → presiune mai mică pe dobânzi.</li>
+              <li><span class="font-medium">NFP</span>: joburi non‑agricole; stabil → piață muncii robustă.</li>
+              <li><span class="font-medium">Real yields</span>: randamente reale; în scădere → suport pentru active de risc.</li>
+            </ul>
+          </div>
+          <div class="rounded-lg border bg-gray-50/70 p-3">
+            <div class="font-semibold mb-1">Decizii LLM în răspuns</div>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><span class="font-medium">Teză</span>: mesaj concis susținut de citări [n].</li>
+              <li><span class="font-medium">Setup</span>: condiții necesare pentru idee (tehnic/fundamental).</li>
+              <li><span class="font-medium">Invalidare</span>: când renunțăm la idee (nivel/pattern).</li>
+              <li><span class="font-medium">Niveluri</span>: entry/stop/TP prezentate clar.</li>
+              <li><span class="font-medium">Risc/Incertitudine</span>: evaluare simplă (low/med/high).</li>
+            </ul>
+          </div>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-200 text-xs text-gray-500 flex items-center justify-between">
+          <span>Glisează pentru a vedea tot conținutul. Închide cu X.</span>
+          <button data-close-help class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800">
+            <i data-lucide="check" class="w-4 h-4"></i> Închis
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
       <!-- Header -->
       <nav class="flex items-center justify-between">
@@ -32,6 +98,10 @@
           <button id="btnBrief" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Daily Brief">
             <i data-lucide="sunrise" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Daily Brief</span>
+          </button>
+          <button id="btnGuide" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Ghid începător">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Ghid începător</span>
           </button>
           <button id="btnJournal" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Jurnal">
             <i data-lucide="notebook-pen" class="w-4 h-4"></i>
@@ -197,21 +267,21 @@
 
             <div class="p-4 space-y-4">
               <div>
-                <div class="text-xs text-gray-500 mb-1">Teză</div>
+                <div id="labelThesis" class="text-xs text-gray-500 mb-1">Teză</div>
                 <p id="thesis" class="text-sm leading-relaxed"></p>
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/50">
-                  <div class="text-xs text-gray-500 mb-1">Setup</div>
+                  <div id="labelSetup" class="text-xs text-gray-500 mb-1">Setup</div>
                   <p id="setup" class="text-sm"></p>
                 </div>
                 <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/50">
-                  <div class="text-xs text-gray-500 mb-1">Invalidare</div>
+                  <div id="labelInvalidation" class="text-xs text-gray-500 mb-1">Invalidare</div>
                   <p id="invalidation" class="text-sm"></p>
                 </div>
                 <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/50">
-                  <div class="text-xs text-gray-500 mb-1">Niveluri</div>
+                  <div id="labelLevels" class="text-xs text-gray-500 mb-1">Niveluri</div>
                   <div id="levels" class="text-sm"></div>
                 </div>
               </div>
@@ -234,8 +304,14 @@
 
       <!-- Footer tiny -->
       <div class="py-8">
-        <div class="text-center text-xs text-gray-500">
-          Latency țintă: Query &lt; 3s • Daily Brief &lt; 8s • Toate ideile au citări clicabile.
+        <div class="text-center text-xs text-gray-500 mb-2">Latency țintă: Query &lt; 3s • Daily Brief &lt; 8s • Toate ideile au citări clicabile.</div>
+        <div class="max-w-2xl mx-auto text-xs text-gray-600 bg-white/70 backdrop-blur border border-gray-200 rounded-xl px-3 py-2">
+          <div class="font-medium text-gray-700 mb-1">Ajutor rapid</div>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Alege tabul corect (nu amesteca strategiile).</li>
+            <li>Caută răspunsuri cu citări — apasă pe [n] sau „Deschide pasaj”.</li>
+            <li>Dacă nu ai context: încarcă surse la Upload sau ajustează K/N/τ.</li>
+          </ul>
         </div>
       </div>
     </div>
@@ -277,6 +353,14 @@
                 <div class="h-4 bg-gray-100 rounded w-4/6"></div>
               </div>
             </div>
+            <div id="macroLegend" class="mt-3 text-xs text-gray-600">
+              <div class="font-medium text-gray-700 mb-1">Legendă termeni</div>
+              <div class="flex flex-wrap gap-2">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border bg-white">CPI <button class="info-inline" data-popover="cpi" aria-label="Detalii: CPI"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border bg-white">NFP <button class="info-inline" data-popover="nfp" aria-label="Detalii: NFP"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border bg-white">Real yields <button class="info-inline" data-popover="realyields" aria-label="Detalii: Real yields"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
+              </div>
+            </div>
           </div>
 
           <!-- Ideas Panel -->
@@ -311,6 +395,51 @@
         <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
           <span class="text-xs text-gray-500">Toate notele și ideile includ citări. Click „Deschide pasaj” pentru auditare.</span>
           <button data-close-brief class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800">
+            <i data-lucide="check" class="w-4 h-4"></i> Închis
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Beginner Guide Modal -->
+    <div id="guideModal" class="hidden fixed inset-0 z-50">
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="relative mx-auto my-8 w-[95%] max-w-3xl bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center gap-2">
+            <i data-lucide="book-open" class="w-5 h-5 text-gray-700"></i>
+            <h2 class="text-lg tracking-tight font-semibold">Ghid începător — Cum folosesc pagina</h2>
+          </div>
+          <button data-close-guide class="p-2 rounded-lg border bg-gray-50 hover:bg-gray-100" aria-label="Închide">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="p-4 text-sm space-y-3">
+          <div>
+            <div class="font-semibold mb-1">Pasul 1 — Alege strategia (tab sus)</div>
+            <div>EQ-INV (investiții), EQ-MOM (momentum), OPT-INCOME (opțiuni). Nu amesteca tab-urile.</div>
+          </div>
+          <div>
+            <div class="font-semibold mb-1">Pasul 2 — Daily Brief (08:00)</div>
+            <div>Apasă „Daily Brief”. Vezi regimul macro + Top 3 idei/strategie + calendar. Fiecare are citări.</div>
+          </div>
+          <div>
+            <div class="font-semibold mb-1">Pasul 3 — Pune o întrebare pe tab</div>
+            <div>Ex.: „EQ-MOM: dă Top 3 set-up-uri azi, cu citări.” Primești Teză + Setup + Invalidare + Niveluri + Risc, cu [citări]. Dacă apare „Insuficient context”, încarcă surse sau ajustează K/N/τ.</div>
+          </div>
+          <div>
+            <div class="font-semibold mb-1">Pasul 4 — Verifică sursele</div>
+            <div>Apasă pe [n] sau „Deschide pasaj” ca să vezi fragmentul exact.</div>
+          </div>
+          <div>
+            <div class="font-semibold mb-1">Pasul 5 — Jurnal</div>
+            <div>Apasă „Trimite în Jurnal” → confirmi/editzi; ulterior poți exporta CSV.</div>
+          </div>
+          <div class="pt-2 border-t border-gray-200 text-xs text-gray-600">
+            Reguli: Context-Only • No-mix pe tab • Sugestii, nu ordine • τ/K/N, Reranker, MMR vizibile.
+          </div>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-200">
+          <button data-close-guide class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800">
             <i data-lucide="check" class="w-4 h-4"></i> Închis
           </button>
         </div>

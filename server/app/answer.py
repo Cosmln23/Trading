@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import os, math
+import os, math, time, logging
 from .db import get_conn
 from .config import settings
 
@@ -38,6 +38,7 @@ def embed_text(text: str):
 
 @router.post("/answer", response_model=AnswerResponse)
 def post_answer(payload: AnswerRequest):
+    t0 = time.perf_counter()
     q = (payload.question or "").strip()
     if not q:
         raise HTTPException(status_code=400, detail="Empty question")
@@ -50,6 +51,7 @@ def post_answer(payload: AnswerRequest):
 
     conn = get_conn()
     citations = []
+    num_candidates = 0
 
     if qvec is not None:
         # Vector search with cosine distance (<->); param cast to vector to avoid array operator error
@@ -65,6 +67,7 @@ def post_answer(payload: AnswerRequest):
                 (qvec, payload.collection, settings.retrieval_k)
             )
             rows = cur.fetchall()
+        num_candidates = len(rows)
         # Apply tau and pick top N
         tau = float(getattr(settings, "relevance_tau", 0.20))
         for r in rows:
@@ -93,7 +96,8 @@ def post_answer(payload: AnswerRequest):
                 (payload.collection, settings.retrieval_k)
             )
             rows = cur.fetchall()
-        for r in rows[: int(getattr(settings, "retrieval_n", 5))]:
+        num_candidates = len(rows)
+        for r in rows[: int(getattr(settings, "recovery_n", getattr(settings, "retrieval_n", 5)) )]:
             citations.append({
                 "label": r[0],
                 "doc_id": r[1],
@@ -103,7 +107,28 @@ def post_answer(payload: AnswerRequest):
                 "url": "#"
             })
 
-    if len(citations) < 3:
+    insufficient = len(citations) < 3
+    # Observability log
+    try:
+        logger = logging.getLogger("app.answer")
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "answer_timing collection=%s duration_ms=%s candidates=%s citations=%s k=%s n=%s tau=%s embedded=%s qlen=%s insufficient=%s",
+            payload.collection,
+            duration_ms,
+            num_candidates,
+            len(citations),
+            getattr(settings, "retrieval_k", None),
+            getattr(settings, "retrieval_n", None),
+            getattr(settings, "relevance_tau", None),
+            qvec is not None,
+            len(q),
+            insufficient,
+        )
+    except Exception:
+        pass
+
+    if insufficient:
         return AnswerResponse(answer={"thesis":"","setup":"","invalidation":"","levels":"","risk":"—","uncertainty":"—"}, citations=[])
 
     answer = {
