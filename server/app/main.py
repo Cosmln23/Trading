@@ -2,20 +2,49 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
+from starlette.responses import Response, FileResponse
 from pathlib import Path
 import os
+import base64
 import psycopg
 
 from .config import settings
+from .answer import router as answer_router
 
 app = FastAPI(title="Trading Assistant API", version="1.0.0")
 
-# Same-origin: no CORS needed if UI+API same host. Keep CORS disabled by default.
+GATE_USERNAME = os.getenv("GATE_USERNAME", "")
+GATE_PASSWORD = os.getenv("GATE_PASSWORD", "")
+
+if GATE_PASSWORD:
+    @app.middleware("http")
+    async def basic_auth_middleware(request, call_next):
+        # Allow health without auth; everything else requires Basic auth
+        if request.url.path == "/health":
+            return await call_next(request)
+        auth = request.headers.get("authorization")
+        ok = False
+        if auth and auth.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="ignore")
+                # expected format: username:password
+                if ":" in decoded:
+                    user, pwd = decoded.split(":", 1)
+                    if GATE_USERNAME:
+                        ok = (user == GATE_USERNAME and pwd == GATE_PASSWORD)
+                    else:
+                        ok = (pwd == GATE_PASSWORD)
+            except Exception:
+                ok = False
+        if not ok:
+            resp = Response(status_code=401)
+            resp.headers["WWW-Authenticate"] = 'Basic realm="Restricted"'
+            return resp
+        return await call_next(request)
 
 @app.get("/health")
 async def health():
     checks = {"vertex": "unknown", "db": "unknown", "reranker": "unknown", "llm": "unknown"}
-    # DB check (non-blocking if DATABASE_URL missing)
     if settings.database_url:
         try:
             with psycopg.connect(settings.database_url) as conn:
@@ -26,7 +55,6 @@ async def health():
             checks["db"] = "fail"
     else:
         checks["db"] = "unset"
-    # Others left as 'unknown' until implemented
     return {"status": "ok", "checks": checks}
 
 @app.get("/api/settings")
@@ -42,8 +70,12 @@ async def get_settings():
     }
     return JSONResponse(content=data)
 
-# Optional: serve UI statically from repo root (../) for same-origin dev
-repo_root = Path(__file__).resolve().parents[2]
-ui_index = repo_root / "index.html"
-if ui_index.exists():
-    app.mount("/", StaticFiles(directory=str(repo_root), html=True), name="ui")
+app.include_router(answer_router)
+
+# Serve only the built static UI folder (in container under /app)
+ui_root = Path("/app")
+if (ui_root / "index.html").exists() and (ui_root / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(ui_root / "assets"), html=False), name="assets")
+    @app.get("/")
+    async def root_index():
+        return FileResponse(str(ui_root / "index.html"))

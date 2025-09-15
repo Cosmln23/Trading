@@ -88,6 +88,14 @@
   const mToggleMock = document.getElementById('mToggleMock');
   const mToggleMockLabel = document.getElementById('mToggleMockLabel');
   const mToggleMockKnob = document.getElementById('mToggleMockKnob');
+  // Tooltips: make titles available on hover
+  document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('title', `Tab: ${b.textContent}`));
+  document.getElementById('chipK')?.parentElement?.setAttribute('title', 'K = număr pasaje retrieve per query');
+  document.getElementById('chipN')?.parentElement?.setAttribute('title', 'N = număr pasaje finale după reranker');
+  document.getElementById('chipTau')?.parentElement?.setAttribute('title', 'τ = prag relevanță (tau)');
+  document.getElementById('chipReranker')?.parentElement?.setAttribute('title', 'Reranker = ON/OFF');
+  document.getElementById('chipMMR')?.parentElement?.setAttribute('title', 'MMR = diversitate rezultate');
+  document.getElementById('chipRecency')?.parentElement?.setAttribute('title', 'Recency boost = folosire știri recente');
 
   function setActiveTabUI(tab){
     setActiveTab(tab);
@@ -437,6 +445,14 @@
     toggleMockLabel.textContent = state.mockMode ? 'ON' : 'OFF'; mToggleMockLabel.textContent = state.mockMode ? 'ON' : 'OFF';
     toggleMockKnob.style.transform = state.mockMode ? 'translateX(0px)' : 'translateX(16px)';
     mToggleMockKnob.style.transform = state.mockMode ? 'translateX(0px)' : 'translateX(16px)';
+    // Visual state: green when ON
+    const onClass = 'bg-emerald-600';
+    const offClass = 'bg-gray-900';
+    const knobOn = 'bg-white';
+    const knobOff = 'bg-white';
+    const wrap = toggleMockKnob.parentElement; const mwrap = mToggleMockKnob.parentElement;
+    if (wrap){ wrap.classList.toggle('bg-emerald-600', state.mockMode); wrap.classList.toggle('bg-gray-200', !state.mockMode); }
+    if (mwrap){ mwrap.classList.toggle('bg-emerald-600', state.mockMode); mwrap.classList.toggle('bg-gray-200', !state.mockMode); }
   }
   toggleMock.addEventListener('change', () => { setMockMode(toggleMock.checked); syncMockUI(); });
   mToggleMock.addEventListener('change', () => { setMockMode(mToggleMock.checked); syncMockUI(); });
