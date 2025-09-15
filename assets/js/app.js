@@ -73,6 +73,9 @@
   const uploadList = document.getElementById('uploadList');
   const uploadStrategy = document.getElementById('uploadStrategy');
   const btnStartUpload = document.getElementById('btnStartUpload');
+  const uploadBtnLabel = document.getElementById('uploadBtnLabel');
+  const btnRetryUpload = document.getElementById('btnRetryUpload');
+  const uploadLogs = document.getElementById('uploadLogs');
   let toastTimer = null;
 
   const btnSettings = document.getElementById('btnSettings');
@@ -511,6 +514,11 @@
 
   // Dropzone
   let filesQueue = [];
+  function logUpload(msg){
+    if (!uploadLogs) return;
+    const line = document.createElement('div'); line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; uploadLogs.appendChild(line); uploadLogs.scrollTop = uploadLogs.scrollHeight;
+  }
+
   function renderUploads(list){
     if (!list.length){ uploadList.innerHTML = `<div class="text-xs text-gray-400">Niciun fișier încă.</div>`; return; }
     uploadList.innerHTML = '';
@@ -533,16 +541,28 @@
   ;['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('ring-2','ring-gray-400'); }));
   dropzone.addEventListener('drop', (e) => { filesQueue = Array.from(e.dataTransfer.files || []); renderUploads(filesQueue); });
   fileInput.addEventListener('change', (e) => { filesQueue = Array.from(e.target.files || []); renderUploads(filesQueue); });
-  btnStartUpload.addEventListener('click', async () => {
+  async function doUpload(){
     if (!filesQueue.length) return;
     try{
+      // Disable while uploading
+      btnStartUpload.disabled = true; btnStartUpload.classList.add('opacity-70'); uploadBtnLabel.textContent = 'Se încarcă…';
+      logUpload(`Pornit upload (${filesQueue.length} fișiere) → strategie ${uploadStrategy.value}`);
       const res = await postUpload(filesQueue, uploadStrategy.value);
       setUploads(res);
       renderUploads(res);
+      logUpload(`Terminat upload: ${res.map(x=>`${x.name}=${x.status}`).join(', ')}`);
       // Success toast
       showToast(`Upload finalizat: ${res.filter(x=>x.status==='accepted').length} acceptate, ${res.filter(x=>x.status==='dedup').length} dedup, ${res.filter(x=>x.status==='rejected').length} respinse`);
-    }catch(e){ /* silent */ }
-  });
+      btnRetryUpload.classList.add('hidden');
+    }catch(e){
+      logUpload('Eroare upload (rețea/timeout). Poți apăsa Reîncearcă.');
+      btnRetryUpload.classList.remove('hidden');
+    } finally {
+      btnStartUpload.disabled = false; btnStartUpload.classList.remove('opacity-70'); uploadBtnLabel.textContent = 'Încarcă';
+    }
+  }
+  btnStartUpload.addEventListener('click', doUpload);
+  btnRetryUpload?.addEventListener('click', doUpload);
 
   // Toast helper
   function showToast(message){
