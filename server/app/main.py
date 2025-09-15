@@ -10,6 +10,8 @@ import psycopg
 
 from .config import settings
 from .answer import router as answer_router
+from .brief import router as brief_router
+from .upload import router as upload_router
 
 app = FastAPI(title="Trading Assistant API", version="1.0.0")
 
@@ -19,7 +21,6 @@ GATE_PASSWORD = os.getenv("GATE_PASSWORD", "")
 if GATE_PASSWORD:
     @app.middleware("http")
     async def basic_auth_middleware(request, call_next):
-        # Allow health without auth; everything else requires Basic auth
         if request.url.path == "/health":
             return await call_next(request)
         auth = request.headers.get("authorization")
@@ -27,7 +28,6 @@ if GATE_PASSWORD:
         if auth and auth.startswith("Basic "):
             try:
                 decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="ignore")
-                # expected format: username:password
                 if ":" in decoded:
                     user, pwd = decoded.split(":", 1)
                     if GATE_USERNAME:
@@ -71,8 +71,9 @@ async def get_settings():
     return JSONResponse(content=data)
 
 app.include_router(answer_router)
+app.include_router(brief_router)
+app.include_router(upload_router)
 
-# Serve only the built static UI folder (in container under /app)
 ui_root = Path("/app")
 if (ui_root / "index.html").exists() and (ui_root / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(ui_root / "assets"), html=False), name="assets")
