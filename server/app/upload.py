@@ -1,11 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, Form
 from typing import List
-import hashlib
+import hashlib as _hashlib
 import os
 import time
 import logging
 import uuid
 from .db import get_conn
+try:
+    from pgvector.psycopg import Vector as _PgVector
+except Exception:
+    _PgVector = None
 
 router = APIRouter(prefix="/api")
 
@@ -43,14 +47,33 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
             return None
         try:
             from vertexai import init
-            from vertexai.language_models import TextEmbeddingModel
+            try:
+                # Newer SDKs expose text-embedding-004 în preview
+                from vertexai.preview.language_models import TextEmbeddingModel  # type: ignore
+            except Exception:  # fallback pentru gecko
+                from vertexai.language_models import TextEmbeddingModel  # type: ignore
             init(project=project, location=location)
             mdl = TextEmbeddingModel.from_pretrained(model)
             embs = mdl.get_embeddings(texts)
+            try:
+                if embs and (getattr(embs[0], "values", None) or getattr(getattr(embs[0], "embedding", None), "values", None)):
+                    dim = len(getattr(embs[0], "values", None) or getattr(getattr(embs[0], "embedding", None), "values", None))
+                    logging.getLogger("app.upload").info("vertex_embed_dim model=%s dim=%s", model, dim)
+            except Exception:
+                pass
             out = []
             for e in embs:
                 vals = getattr(e, "values", None) or getattr(getattr(e, "embedding", None), "values", None)
                 if vals is None:
+                    try:
+                        logging.getLogger("app.upload").info(
+                            "vertex_embed_debug model=%s missing_values type=%s attrs=%s",
+                            model,
+                            type(e).__name__,
+                            dir(e),
+                        )
+                    except Exception:
+                        pass
                     out.append(None)
                 else:
                     # L2 normalize
@@ -59,15 +82,17 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                     out.append([float(v)/norm for v in vals])
             return out
         except Exception:
+            logging.getLogger("app.upload").exception("vertex_upload_embed_error")
             return None
 
-    # Detect embedding column once
+    # Detect embedding column and dedup availability
     emb_col = "embedding_vec"
+    has_chunk_hash = False
     try:
         with get_conn().cursor() as cur:
             cur.execute("""
                 SELECT column_name FROM information_schema.columns
-                WHERE table_name='fragments' AND column_name IN ('embedding_vec','embedding')
+                WHERE table_name='fragments' AND column_name IN ('embedding_vec','embedding','chunk_hash')
             """)
             cols = {r[0] for r in cur.fetchall()}
             if 'embedding_vec' in cols:
@@ -76,8 +101,10 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                 emb_col = 'embedding'
             else:
                 emb_col = None
+            has_chunk_hash = 'chunk_hash' in cols
     except Exception:
         emb_col = None
+        has_chunk_hash = False
     for f in files:
         name = f.filename or "file"
         ext = (name.rsplit(".", 1)[-1].lower() if "." in name else "")
@@ -87,7 +114,7 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
         # compute hash to simulate dedup
         data = await f.read()
         size = len(data)
-        file_hash = hashlib.sha256(data).hexdigest()
+        file_hash = _hashlib.sha256(data).hexdigest()
         # simple rule: if name or hash ends with '0' treat as dedup (demo)
         if name.lower().find("dup") >= 0 or file_hash.endswith("0"):
             results.append({"name": name, "size": size, "status": "dedup"})
@@ -115,38 +142,128 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                             except Exception:
                                 pages.append("")
                         text = "\n".join(pages)
+                        # OCR fallback if almost no text extracted
+                        if len(text.strip()) < 50:
+                            try:
+                                import pypdfium2 as pdfium
+                                from PIL import Image
+                                import pytesseract
+                                pdf = pdfium.PdfDocument(io.BytesIO(data))
+                                ocr_pages = []
+                                max_pages = min(len(pdf), 10)
+                                for i in range(max_pages):
+                                    page = pdf[i]
+                                    bmp = page.render(scale=2).to_pil()
+                                    txt = pytesseract.image_to_string(bmp) or ""
+                                    ocr_pages.append(txt)
+                                ocr_text = "\n".join(ocr_pages).strip()
+                                if len(ocr_text) > len(text):
+                                    text = ocr_text
+                                    # mark in results for observability
+                                    for r in results:
+                                        if r.get("name") == name:
+                                            r["ocr_used"] = True
+                                            r["ocr_pages"] = max_pages
+                                            break
+                            except Exception:
+                                # Ignore OCR errors, keep original text
+                                pass
 
                     collection = map_collection(strategy)
                     doc_id = f"upload:{name}"
                     chunks = split_text(text, max_chars=3500, overlap=500)
+                    # enrich result with stats
+                    text_chars = len(text or "")
+                    chunk_count = len(chunks)
+                    if chunk_count == 0:
+                        # mark explicitly no text extracted
+                        for r in results:
+                            if r.get("name") == name:
+                                r["reason"] = r.get("reason") or ("no_text_extracted" if text_chars == 0 else "no_chunks")
+                                r["text_chars"] = text_chars
+                                r["chunk_count"] = chunk_count
+                                break
                     # Batch embeddings (size 32)
                     vectors = []
                     batch = 32
                     for s in range(0, len(chunks), batch):
                         part = vertex_embed_batch(chunks[s:s+batch]) or [None] * len(chunks[s:s+batch])
                         vectors.extend(part)
+                    try:
+                        logging.getLogger("app.upload").info(
+                            "upload_ingest_stats name=%s text_chars=%s chunk_count=%s vector_count=%s emb_col=%s",
+                            name,
+                            text_chars,
+                            len(chunks),
+                            len(vectors),
+                            emb_col,
+                        )
+                    except Exception:
+                        pass
                     with get_conn().cursor() as cur:
                         for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
                             frag_id = uuid.uuid4().hex
                             # Dedup via chunk_hash
-                            ch = hashlib.md5(chunk.encode('utf-8', errors='ignore')).hexdigest()
-                            if emb_col is None or vec is None:
-                                cur.execute(
-                                    "INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
-                                    (frag_id, doc_id, collection, None, idx, chunk[:4000], ch)
-                                )
-                            else:
-                                cur.execute(
-                                    f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
-                                    (frag_id, doc_id, collection, None, idx, chunk[:4000], vec, ch)
-                                )
-                            ingest_count += 1
-                            if vec is not None:
-                                embedded_count += 1
+                            ch = _hashlib.md5(chunk.encode('utf-8', errors='ignore')).hexdigest()
+                            try:
+                                if has_chunk_hash:
+                                    if emb_col is None or vec is None:
+                                        cur.execute(
+                                            "INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
+                                            (frag_id, doc_id, collection, None, idx, chunk[:4000], ch)
+                                        )
+                                    else:
+                                        if emb_col == 'embedding_vec':
+                                            vec_param = _PgVector(vec) if _PgVector else vec
+                                            cur.execute(
+                                                f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
+                                                (frag_id, doc_id, collection, None, idx, chunk[:4000], vec_param, ch)
+                                            )
+                                        else:
+                                            cur.execute(
+                                                f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}, chunk_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (doc_id, chunk_hash) DO NOTHING",
+                                                (frag_id, doc_id, collection, None, idx, chunk[:4000], vec, ch)
+                                            )
+                                else:
+                                    # No chunk_hash column/constraint → insert without dedup and without embedding if not supported
+                                    if emb_col is None or vec is None:
+                                        cur.execute(
+                                            "INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text) VALUES (%s,%s,%s,%s,%s,%s)",
+                                            (frag_id, doc_id, collection, None, idx, chunk[:4000])
+                                        )
+                                    else:
+                                        if emb_col == 'embedding_vec':
+                                            vec_param = _PgVector(vec) if _PgVector else vec
+                                            cur.execute(
+                                                f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                                                (frag_id, doc_id, collection, None, idx, chunk[:4000], vec_param)
+                                            )
+                                        else:
+                                            cur.execute(
+                                                f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                                                (frag_id, doc_id, collection, None, idx, chunk[:4000], vec)
+                                            )
+                                ingest_count += 1
+                                if vec is not None:
+                                    embedded_count += 1
+                            except Exception as e:
+                                try:
+                                    vlen = (len(vec) if isinstance(vec, list) else None)
+                                    logging.getLogger("app.upload").exception("upload_insert_error emb_col=%s vec_len=%s", emb_col, vlen)
+                                except Exception:
+                                    pass
                         get_conn().commit()
+                    # attach stats to result record after processing
+                    for r in results:
+                        if r.get("name") == name:
+                            r["text_chars"] = r.get("text_chars", text_chars)
+                            r["chunk_count"] = r.get("chunk_count", chunk_count)
+                            break
             except Exception:
-                # swallow ingest error; file remains accepted
-                pass
+                try:
+                    logging.getLogger("app.upload").exception("upload_ingest_error name=%s", name)
+                except Exception:
+                    pass
     try:
         logging.getLogger("app.upload").info(
             "upload_batch files=%s strategy=%s duration_ms=%s statuses=%s ingest_count=%s embedded_count=%s",

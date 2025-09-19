@@ -14,6 +14,7 @@ from .answer import router as answer_router
 from .brief import router as brief_router
 from .upload import router as upload_router
 from .journal import router as journal_router
+from .db import get_conn
 
 app = FastAPI(title="Trading Assistant API", version="1.0.0")
 
@@ -86,3 +87,30 @@ if (ui_root / "index.html").exists() and (ui_root / "assets").exists():
     @app.get("/")
     async def root_index():
         return FileResponse(str(ui_root / "index.html"))
+
+@app.get("/favicon.ico")
+async def favicon():
+    icon_path = Path("/app/assets/favicon.ico")
+    if icon_path.exists():
+        return FileResponse(str(icon_path))
+    return Response(status_code=204)
+
+@app.post("/admin/fix_schema")
+async def admin_fix_schema():
+    before = []
+    after = []
+    try:
+        with get_conn().cursor() as cur:
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='fragments'")
+            before = [r[0] for r in cur.fetchall()]
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            cur.execute("ALTER TABLE fragments ADD COLUMN IF NOT EXISTS chunk_hash varchar(64)")
+            cur.execute("ALTER TABLE fragments ADD COLUMN IF NOT EXISTS embedding_vec vector(768)")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_frag_doc_chunk_idx ON fragments (doc_id, chunk_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_fragments_vec ON fragments USING ivfflat (embedding_vec)")
+            get_conn().commit()
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='fragments'")
+            after = [r[0] for r in cur.fetchall()]
+        return JSONResponse(content={"ok": True, "before": before, "after": after})
+    except Exception as e:
+        return JSONResponse(content={"ok": False, "error": str(e), "before": before, "after": after}, status_code=500)

@@ -34,6 +34,7 @@ def embed_text(text: str):
         vals = getattr(emb, "values", None) or getattr(getattr(emb, "embedding", None), "values", None)
         return list(vals) if vals is not None else None
     except Exception:
+        logging.getLogger("app.answer").exception("vertex_embed_error")
         return None
 
 @router.post("/answer", response_model=AnswerResponse)
