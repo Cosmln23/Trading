@@ -27,7 +27,11 @@ def embed_text(text: str):
         return None
     try:
         from vertexai import init
-        from vertexai.language_models import TextEmbeddingModel
+        try:
+            # Prefer preview path for text-embedding-004 on newer SDKs
+            from vertexai.preview.language_models import TextEmbeddingModel  # type: ignore
+        except Exception:
+            from vertexai.language_models import TextEmbeddingModel  # type: ignore
         init(project=project, location=location)
         mdl = TextEmbeddingModel.from_pretrained(model)
         emb = mdl.get_embeddings([text])[0]
@@ -55,21 +59,25 @@ def post_answer(payload: AnswerRequest):
     num_candidates = 0
 
     if qvec is not None:
-        # Vector search with cosine distance (<->); param cast to vector to avoid array operator error
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, doc_id, page, chunk_index, text, (embedding_vec <-> %s::vector) AS dist
-                FROM fragments
-                WHERE collection = %s AND embedding_vec IS NOT NULL
-                ORDER BY dist ASC
-                LIMIT %s
-                """,
-                (qvec, payload.collection, settings.retrieval_k)
-            )
-            rows = cur.fetchall()
+        # Use Euclidean operator <-> (available on all pgvector versions) and convert to cosine-like score
+        # because vectors are L2-normalized in upload.
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, doc_id, page, chunk_index, text, (embedding_vec <-> %s::vector) AS dist
+                    FROM fragments
+                    WHERE collection = %s AND embedding_vec IS NOT NULL
+                    ORDER BY dist ASC
+                    LIMIT %s
+                    """,
+                    (qvec, payload.collection, settings.retrieval_k)
+                )
+                rows = cur.fetchall()
+        except Exception:
+            logging.getLogger("app.answer").exception("answer_query_error")
+            rows = []
         num_candidates = len(rows)
-        # Apply tau and pick top N
         tau = float(getattr(settings, "relevance_tau", 0.20))
         for r in rows:
             dist = float(r[5]) if r[5] is not None else 1.0
