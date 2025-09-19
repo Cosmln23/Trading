@@ -21,6 +21,7 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
     results = []
     ingest_count = 0
     embedded_count = 0
+    per_file_stats = {}
 
     def map_collection(s: str) -> str:
         return "EQ_INV" if s == "A" else ("EQ_MOM_PEAD" if s == "B" else "OPT_INCOME")
@@ -111,7 +112,7 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
         if ext and ext not in ALLOWED_EXT:
             results.append({"name": name, "size": 0, "status": "rejected", "reason": "format neacceptat"})
             continue
-        # compute hash to simulate dedup
+        # compute hash for file-level dedup/history
         data = await f.read()
         size = len(data)
         file_hash = _hashlib.sha256(data).hexdigest()
@@ -200,6 +201,9 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                         )
                     except Exception:
                         pass
+                    inserted_for_file = 0
+                    skipped_conflict_for_file = 0
+                    embedded_for_file = 0
                     with get_conn().cursor() as cur:
                         for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
                             frag_id = uuid.uuid4().hex
@@ -243,9 +247,14 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                                                 f"INSERT INTO fragments (id, doc_id, collection, page, chunk_index, text, {emb_col}) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                                                 (frag_id, doc_id, collection, None, idx, chunk[:4000], vec)
                                             )
-                                ingest_count += 1
-                                if vec is not None:
-                                    embedded_count += 1
+                                if cur.rowcount and cur.rowcount > 0:
+                                    inserted_for_file += 1
+                                    ingest_count += 1
+                                    if vec is not None:
+                                        embedded_for_file += 1
+                                        embedded_count += 1
+                                else:
+                                    skipped_conflict_for_file += 1
                             except Exception as e:
                                 try:
                                     vlen = (len(vec) if isinstance(vec, list) else None)
@@ -253,6 +262,18 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                                 except Exception:
                                     pass
                         get_conn().commit()
+                    per_file_stats[name] = {
+                        "file_size": size,
+                        "file_hash": file_hash,
+                        "doc_id": doc_id,
+                        "collection": collection,
+                        "text_chars": text_chars,
+                        "chunk_count": chunk_count,
+                        "inserted": inserted_for_file,
+                        "skipped": skipped_conflict_for_file,
+                        "embedded": embedded_for_file,
+                        "ocr_used": any(r.get("ocr_used") for r in results if r.get("name") == name)
+                    }
                     # attach stats to result record after processing
                     for r in results:
                         if r.get("name") == name:
@@ -264,6 +285,36 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                     logging.getLogger("app.upload").exception("upload_ingest_error name=%s", name)
                 except Exception:
                     pass
+    # persist upload history if table exists
+    try:
+        with get_conn().cursor() as cur:
+            for rec in results:
+                if rec.get("status") not in ("accepted", "dedup"):
+                    continue
+                name = rec.get("name")
+                stats = per_file_stats.get(name, {})
+                cur.execute(
+                    "INSERT INTO upload_history (file_name, file_size, file_hash, doc_id, collection, text_chars, chunk_count, inserted_count, skipped_conflict_count, embedded_count, ocr_used) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        name,
+                        stats.get("file_size"),
+                        stats.get("file_hash"),
+                        stats.get("doc_id"),
+                        stats.get("collection"),
+                        stats.get("text_chars"),
+                        stats.get("chunk_count"),
+                        stats.get("inserted"),
+                        stats.get("skipped"),
+                        stats.get("embedded"),
+                        True if rec.get("ocr_used") or stats.get("ocr_used") else False,
+                    ),
+                )
+            get_conn().commit()
+    except Exception:
+        try:
+            logging.getLogger("app.upload").exception("upload_history_insert_error")
+        except Exception:
+            pass
     try:
         logging.getLogger("app.upload").info(
             "upload_batch files=%s strategy=%s duration_ms=%s statuses=%s ingest_count=%s embedded_count=%s",
