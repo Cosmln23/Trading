@@ -8,6 +8,7 @@ import os
 import logging
 import base64
 import psycopg
+import time
 
 from .config import settings
 from .answer import router as answer_router
@@ -23,6 +24,18 @@ logging.basicConfig(level=logging.INFO)
 
 GATE_USERNAME = os.getenv("GATE_USERNAME", "")
 GATE_PASSWORD = os.getenv("GATE_PASSWORD", "")
+ENABLE_ADMIN_FIX_SCHEMA = os.getenv("ENABLE_ADMIN_FIX_SCHEMA", "false").lower() == "true"
+
+# Strict CORS (optional): set ALLOWED_ORIGINS to comma-separated list to enable
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET","POST","OPTIONS"],
+        allow_headers=["*"],
+    )
 
 if GATE_PASSWORD:
     @app.middleware("http")
@@ -47,6 +60,27 @@ if GATE_PASSWORD:
             resp.headers["WWW-Authenticate"] = 'Basic realm="Restricted"'
             return resp
         return await call_next(request)
+
+# Simple per-IP rate limiting (fixed window per 60s)
+_rate_state = {"bucket_start": 0, "counts": {}}
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60") or 60)
+
+@app.middleware("http")
+async def rate_limit_middleware(request, call_next):
+    path = request.url.path or ""
+    if path in ("/health", "/favicon.ico") or path.startswith("/assets"):
+        return await call_next(request)
+    now = int(time.time())
+    bucket = now - (now % 60)
+    if _rate_state["bucket_start"] != bucket:
+        _rate_state["bucket_start"] = bucket
+        _rate_state["counts"] = {}
+    client_ip = request.client.host if request.client else "unknown"
+    cnt = _rate_state["counts"].get(client_ip, 0) + 1
+    _rate_state["counts"][client_ip] = cnt
+    if RATE_LIMIT_PER_MINUTE and cnt > RATE_LIMIT_PER_MINUTE:
+        return Response(status_code=429)
+    return await call_next(request)
 
 @app.get("/health")
 async def health():
@@ -97,6 +131,8 @@ async def favicon():
 
 @app.post("/admin/fix_schema")
 async def admin_fix_schema():
+    if not ENABLE_ADMIN_FIX_SCHEMA:
+        return JSONResponse(content={"ok": False, "error": "disabled"}, status_code=403)
     before = []
     after = []
     try:
