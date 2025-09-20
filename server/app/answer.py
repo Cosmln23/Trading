@@ -116,7 +116,7 @@ def post_answer(payload: AnswerRequest):
                 "url": "#"
             })
 
-    insufficient = len(citations) < 3
+    insufficient = len(citations) < 1
     # Observability log
     try:
         logger = logging.getLogger("app.answer")
