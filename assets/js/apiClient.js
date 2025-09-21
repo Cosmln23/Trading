@@ -41,7 +41,19 @@
     return fetchJson('/api/upload', { method: 'POST', body: form });
   }
 
-  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload };
+  async function getKpis(windowSec){
+    if (state.mockMode) return { window_sec: windowSec||300, rpm: 0, error_rate_pct: 0, p50_ms: null, p95_ms: null, count: 0, index: { present: false } };
+    const qs = new URLSearchParams(); if (windowSec) qs.set('window', String(windowSec));
+    return fetchJson('/observability/kpis' + (qs.toString() ? ('?' + qs.toString()) : ''));
+  }
+
+  async function getEvents(limit){
+    if (state.mockMode) return { list: [] };
+    const qs = new URLSearchParams(); if (limit) qs.set('limit', String(limit));
+    return fetchJson('/observability/events' + (qs.toString() ? ('?' + qs.toString()) : ''));
+  }
+
+  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents };
 })(window);
 
 

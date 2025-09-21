@@ -95,6 +95,10 @@
         </div>
 
         <div class="hidden md:flex items-center gap-2">
+          <button id="btnObservability" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Observability">
+            <i data-lucide="activity" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Observability</span>
+          </button>
           <button id="btnBrief" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Daily Brief">
             <i data-lucide="sunrise" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Daily Brief</span>
@@ -313,6 +317,29 @@
             <li>Dacă nu ai context: încarcă surse la Upload sau ajustează K/N/τ.</li>
           </ul>
         </div>
+      </div>
+    </div>
+
+    <!-- Observability Drawer -->
+    <div id="observabilityDrawer" class="hidden fixed top-0 right-0 z-50 w-[380px] max-w-[95vw] h-full bg-white border-l border-gray-200 shadow-xl">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200">
+        <div class="flex items-center gap-2">
+          <i data-lucide="activity" class="w-4 h-4 text-gray-700"></i>
+          <h2 class="text-sm font-semibold">Observability (local)</h2>
+        </div>
+        <button id="closeObservability" class="p-2 rounded-lg border bg-gray-50 hover:bg-gray-100" aria-label="Închide"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="p-3 space-y-3 text-sm">
+        <div class="grid grid-cols-3 gap-2">
+          <div class="rounded-lg border bg-gray-50 p-2"><div class="text-xs text-gray-500">p95</div><div id="kpiP95" class="text-sm font-medium">—</div></div>
+          <div class="rounded-lg border bg-gray-50 p-2"><div class="text-xs text-gray-500">Error %</div><div id="kpiErr" class="text-sm font-medium">—</div></div>
+          <div class="rounded-lg border bg-gray-50 p-2"><div class="text-xs text-gray-500">Index</div><div id="kpiIndex" class="text-xs font-medium truncate">—</div></div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500 mb-1">Evenimente recente</div>
+          <div id="obsEvents" class="h-[260px] overflow-auto rounded-lg border bg-white p-2 space-y-1"></div>
+        </div>
+        <div class="text-xs text-gray-500">Sursă: buffer in‑memory per instanță /observability; pentru istoric folosește dashboardul GCP.</div>
       </div>
     </div>
 

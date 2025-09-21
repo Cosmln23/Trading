@@ -1,7 +1,7 @@
 // Main UI logic: bindings, rendering, and interactions
 (function(){
   const { state, setActiveTab, setMockMode, setSettings, setAnswer, setBrief, setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill } = window.__UI_STATE__;
-  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload } = window.__API__;
+  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents } = window.__API__;
 
   function mountIcons(){
     if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
@@ -79,6 +79,41 @@
   let toastTimer = null;
 
   const btnSettings = document.getElementById('btnSettings');
+  const btnObservability = document.getElementById('btnObservability');
+  // Observability Drawer
+  let obsInterval = null;
+  function openObservability(){
+    const el = document.getElementById('observabilityDrawer');
+    el?.classList.remove('hidden');
+    mountIcons();
+    refreshObservability();
+    clearInterval(obsInterval);
+    obsInterval = setInterval(refreshObservability, 5000);
+  }
+  function closeObservability(){
+    const el = document.getElementById('observabilityDrawer');
+    el?.classList.add('hidden');
+    clearInterval(obsInterval);
+    obsInterval = null;
+  }
+  async function refreshObservability(){
+    try{
+      const k = await getKpis(300);
+      document.getElementById('kpiP95').textContent = (k?.p95_ms ?? '—') + ' ms';
+      document.getElementById('kpiErr').textContent = (k?.error_rate_pct ?? '—') + ' %';
+      const idx = k?.index || {}; const lbl = idx.present ? `${idx.name || 'idx'} • lists=${idx.lists ?? '—'}` : '—';
+      document.getElementById('kpiIndex').textContent = lbl;
+      const ev = await getEvents(100);
+      const wrap = document.getElementById('obsEvents');
+      wrap.innerHTML = '';
+      (ev?.list || []).forEach(e => {
+        const row = document.createElement('div'); row.className = 'text-xs text-gray-700 flex items-center justify-between';
+        const ts = new Date((e.ts||0) * 1000).toLocaleTimeString();
+        row.innerHTML = `<span class="text-gray-500">${ts}</span><span>${e.component}</span><span>${e.duration_ms ?? '—'} ms</span><span>${e.citations ?? 0}/${e.candidates ?? 0}</span><span>${e.insufficient ? 'insuf.' : ''}</span>`;
+        wrap.appendChild(row);
+      });
+    }catch(e){ /* silent */ }
+  }
   const mBtnSettings = document.getElementById('mBtnSettings');
   const settingsModal = document.getElementById('settingsModal');
   const s_K = document.getElementById('s_K');
@@ -615,6 +650,8 @@
     syncMockUI();
     await loadSettings();
     attachInfo();
+    btnObservability?.addEventListener('click', openObservability);
+    document.getElementById('closeObservability')?.addEventListener('click', closeObservability);
   });
 })();
 

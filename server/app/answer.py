@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import os, math, time, logging
 from .db import get_conn
+from .observability import record_query_event
 from .config import settings
 
 router = APIRouter(prefix="/api")
@@ -134,6 +135,10 @@ def post_answer(payload: AnswerRequest):
             len(q),
             insufficient,
         )
+        try:
+            record_query_event(duration_ms=duration_ms, candidates=num_candidates, citations=len(citations), insufficient=insufficient)
+        except Exception:
+            pass
     except Exception:
         pass
 
