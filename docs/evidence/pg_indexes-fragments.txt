@@ -1,0 +1,12 @@
+"indexname","indexdef"
+"fragments_pkey","CREATE UNIQUE INDEX fragments_pkey ON public.fragments USING btree (id)"
+"journal_pkey","CREATE UNIQUE INDEX journal_pkey ON public.journal USING btree (id)"
+"events_pkey","CREATE UNIQUE INDEX events_pkey ON public.events USING btree (id)"
+"alembic_version_pkc","CREATE UNIQUE INDEX alembic_version_pkc ON public.alembic_version USING btree (version_num)"
+"idx_fragments_vec","CREATE INDEX idx_fragments_vec ON public.fragments USING ivfflat (embedding_vec vector_cosine_ops) WITH (lists='256')"
+
+Filtered (public.fragments only):
+"indexname","indexdef"
+"fragments_pkey","CREATE UNIQUE INDEX fragments_pkey ON public.fragments USING btree (id)"
+"uq_fragments_docid_chunkhash","CREATE UNIQUE INDEX uq_fragments_docid_chunkhash ON public.fragments USING btree (doc_id, chunk_hash)"
+"idx_fragments_vec","CREATE INDEX idx_fragments_vec ON public.fragments USING ivfflat (embedding_vec vector_cosine_ops) WITH (lists='256')"
