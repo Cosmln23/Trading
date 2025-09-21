@@ -3,7 +3,6 @@ from typing import List, Dict, Any
 from collections import deque
 import time
 import math
-
 from .db import get_conn
 
 router = APIRouter(prefix="/observability")
@@ -13,14 +12,25 @@ _events: deque = deque(maxlen=1000)
 
 
 def record_query_event(duration_ms: int, candidates: int, citations: int, insufficient: bool) -> None:
-    _events.append({
+    ev = {
         "ts": time.time(),
         "component": "query",
         "duration_ms": int(duration_ms),
         "candidates": int(candidates),
         "citations": int(citations),
         "insufficient": bool(insufficient),
-    })
+    }
+    _events.append(ev)
+    # Persist best-effort into DB
+    try:
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "INSERT INTO events (ts, component, duration_ms, candidates, citations, insufficient, payload) VALUES (now(), %s, %s, %s, %s, %s, %s)",
+                ("query", duration_ms, candidates, citations, insufficient, None),
+            )
+            get_conn().commit()
+    except Exception:
+        pass
 
 
 def _percentile(sorted_values: List[float], p: float) -> float:
@@ -40,7 +50,60 @@ def _percentile(sorted_values: List[float], p: float) -> float:
     return float(d0 + d1)
 
 
-def _compute_kpis(window_sec: int) -> Dict[str, Any]:
+def _compute_kpis_from_db(window_sec: int) -> Dict[str, Any]:
+    try:
+        with get_conn().cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXTRACT(EPOCH FROM ts), duration_ms, insufficient
+                FROM events
+                WHERE component='query' AND ts >= now() - (%s || ' seconds')::interval
+                ORDER BY ts ASC
+                """,
+                (str(window_sec),),
+            )
+            rows = cur.fetchall()
+        durations = [float(r[1]) for r in rows if r[1] is not None]
+        insuff = [bool(r[2]) for r in rows]
+        count = len(durations)
+        if count == 0:
+            return {"count": 0}
+        p50 = _percentile(sorted(durations), 50.0)
+        p95 = _percentile(sorted(durations), 95.0)
+        rpm = count / (window_sec / 60.0)
+        err = (sum(1 for x in insuff if x) / count) * 100.0
+        # Index status
+        index = {"present": False, "name": None, "lists": None}
+        with get_conn().cursor() as cur:
+            cur.execute(
+                """
+                SELECT indexname, indexdef
+                FROM pg_indexes
+                WHERE tablename='fragments' AND indexname='idx_fragments_vec'
+                """
+            )
+            row = cur.fetchone()
+            if row:
+                index["present"] = True
+                index["name"] = row[0]
+                import re
+                m = re.search(r"lists\s*=\s*'?([0-9]+)'?", row[1] or "")
+                if m:
+                    index["lists"] = int(m.group(1))
+        return {
+            "window_sec": window_sec,
+            "rpm": round(rpm, 2),
+            "error_rate_pct": round(err, 2),
+            "p50_ms": int(p50),
+            "p95_ms": int(p95),
+            "count": count,
+            "index": index,
+        }
+    except Exception:
+        return {"count": 0}
+
+
+def _compute_kpis_from_memory(window_sec: int) -> Dict[str, Any]:
     now = time.time()
     cutoff = now - max(60, window_sec)
     recent = [e for e in list(_events) if e.get("ts", 0) >= cutoff and e.get("component") == "query"]
@@ -52,7 +115,6 @@ def _compute_kpis(window_sec: int) -> Dict[str, Any]:
         err_rate = sum(1 for e in recent if e.get("insufficient")) / count * 100.0
     p50 = _percentile(durations, 50.0) if durations else float("nan")
     p95 = _percentile(durations, 95.0) if durations else float("nan")
-
     # Index status from Postgres
     index = {"present": False, "name": None, "lists": None}
     try:
@@ -68,18 +130,12 @@ def _compute_kpis(window_sec: int) -> Dict[str, Any]:
             if row:
                 index["present"] = True
                 index["name"] = row[0]
-                idxdef = row[1] or ""
-                # Try to extract lists parameter
-                lists_val = None
-                # patterns: WITH (lists=256) or WITH (lists='256')
                 import re
-                m = re.search(r"lists\s*=\s*'?([0-9]+)'?", idxdef)
+                m = re.search(r"lists\s*=\s*'?([0-9]+)'?", row[1] or "")
                 if m:
-                    lists_val = int(m.group(1))
-                index["lists"] = lists_val
+                    index["lists"] = int(m.group(1))
     except Exception:
         pass
-
     return {
         "window_sec": window_sec,
         "rpm": round(rpm, 2),
@@ -93,13 +149,36 @@ def _compute_kpis(window_sec: int) -> Dict[str, Any]:
 
 @router.get("/kpis")
 def get_kpis(window: int = Query(300, ge=60, le=3600)):
-    return _compute_kpis(window)
+    db = _compute_kpis_from_db(window)
+    if db.get("count", 0) > 0:
+        return db
+    return _compute_kpis_from_memory(window)
 
 
 @router.get("/events")
 def get_events(limit: int = Query(200, ge=1, le=500)):
-    out: List[Dict[str, Any]] = list(_events)
-    out = out[-limit:]
-    return {"list": out[::-1]}
+    out: List[Dict[str, Any]] = []
+    # Try DB first
+    try:
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "SELECT EXTRACT(EPOCH FROM ts), component, duration_ms, candidates, citations, insufficient FROM events ORDER BY ts DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall()
+        for r in rows:
+            out.append({
+                "ts": float(r[0]),
+                "component": r[1],
+                "duration_ms": r[2],
+                "candidates": r[3],
+                "citations": r[4],
+                "insufficient": r[5],
+            })
+    except Exception:
+        pass
+    if not out:
+        out = list(_events)[-limit:][::-1]
+    return {"list": out}
 
 
