@@ -1,0 +1,15 @@
+﻿{
+  "displayName": "trading-api: 5xx rate >2% (5m)",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "5xx ratio > 2%",
+      "conditionMonitoringQueryLanguage": {
+        "query": "fetch cloud_run_revision | metric 'run.googleapis.com/request_count' | filter resource.service_name == 'trading-api' | align rate(5m) | group_by [metric.response_code_class], sum | ratio_of sum(value{metric.response_code_class='5xx'}) / sum(value) | condition val() > 0.02",
+        "duration": "300s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": []
+}

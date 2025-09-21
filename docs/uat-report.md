@@ -8,11 +8,11 @@
 ## 1) Metadate
 
 * **Proiect:** Cloud‑assisted RAG Trading Assistant
-* **Versiune testată:** V1.
-* **Interval UAT:** `YYYY‑MM‑DD` → `YYYY‑MM‑DD`
-* **Mediu:** `stage` (identic cu prod: da/nu)
-* **Commit/Build:** `sha` / `tag`
-* **Participanți:** Product Owner, QA Lead, Dev, Ops, Security
+* **Versiune testată:** v22–v23 (api‑v22/api‑v23)
+* **Interval UAT:** 2025‑09‑20 → 2025‑09‑20
+* **Mediu:** Cloud Run (us‑central1) + Cloud SQL (Postgres, pgvector)
+* **Commit/Build:** revizia live (Service URL Cloud Run), taguri: api‑v22, api‑v23
+* **Participanți:** Owner, Dev
 
 ---
 
@@ -25,10 +25,13 @@
 
 ## 3) Criterii de Intrare (Entry Criteria)
 
-* [ ] Endpointurile răspund (health OK: Vertex, DB, Reranker, LLM)
-* [ ] Corpus inițial încărcat per tab (minim set etalon)
-* [ ] UI navigabil complet; Mock Mode **OFF** pe UAT
-* [ ] KPI ținte definite (vezi §5)
+* [x] Endpointuri răspund (health OK: DB)
+* [x] Pipeline upload → embeddings (Vertex) → DB confirmat (embedded_count > 0)
+* [x] `upload_history` activ (per‑file stats)
+* [x] Basic Auth + CORS + rate limiting active; secrete în Secret Manager
+* [x] Alerte create (5xx, p95) + dashboard KPI
+* [ ] Corpus etalon finalizat pe toate tab‑urile
+* [ ] KPI ținte validate (vezi §5)
 
 ---
 
@@ -46,6 +49,7 @@
 * **precision@5 ≥ 0.70** (set etalon, per tab)
 * **hallucination‑rate ≤ 1%** (nicio propoziție factuală fără citare validă)
 * **Latency p95:** Query ≤ **3s**; Daily Brief ≤ **8s**
+* Observație: loguri actuale arată 0.2–9.5s în funcție de query; optimizări în curs
 
 ---
 
@@ -61,9 +65,9 @@
 | QA‑06 | Recency‑boost (news)                       |                    |          |
 | QA‑07 | Daily Brief — Macro stance cu citări       |                    |          |
 | QA‑08 | Daily Brief — Top 3 idei/strategie         |                    |          |
-| QA‑09 | Upload — accepted/dedup/rejected           |                    |          |
-| QA‑10 | Jurnal — Add/Edit/Export CSV               |                    |          |
-| QA‑11 | Latency — Query <3s, Brief <8s (p95)       |                    |          |
+| QA‑09 | Upload — accepted/dedup/rejected           | Pass               | logs     |
+| QA‑10 | Jurnal — Add/Edit/Export CSV               | Pass               | UI       |
+| QA‑11 | Latency — Query <3s, Brief <8s (p95)       | Pending            |          |
 | QA‑12 | Eroare rețea — fallback grațios            |                    |          |
 | QA‑13 | Loguri — fără text integral din surse      |                    |          |
 | QA‑14 | Ambiguitate — „Insuficient context”        |                    |          |
@@ -109,9 +113,9 @@
 
 ## 10) Rezultate Performanță
 
-* **Query (p50/p95):** `x.xs / y.ys`
-* **Daily Brief (p50/p95):** `x.xs / y.ys`
-* **Observații:**
+* **Query (p50/p95):** `~0.25s / ~9.5s` (din `answer_timing`)
+* **Daily Brief (p50/p95):** n/a (de completat după validare finală)
+* **Observații:** p95 influențat de cold‑start și dimensiunea inputului; tuning IVFFLAT/PROBES planificat
 
 ---
 
@@ -133,9 +137,9 @@
 
 ## 13) Concluzii UAT
 
-* **KPI‑uri atinse:** da/nu (detaliați)
-* **Risc rezidual:**
-* **Recomandare:** Go‑Live / Amană (cu motivare)
+* **KPI‑uri atinse:** Parțial (upload/ingest/embeddings/answer + securitate/observabilitate OK)
+* **Risc rezidual:** latență p95 variabilă; corp etalon incomplet; Brief de finalizat
+* **Recomandare:** Go‑Live pilot (limitat) după finalizarea §14‑1/2/3
 
 ---
 
@@ -143,7 +147,10 @@
 
 | # | Acțiune | Owner | Scadență | Status |
 | - | ------- | ----- | -------- | ------ |
-| 1 |         |       |          |        |
+| 1 | Finalizează Brief + citări                     | Dev   | 2 zile   | Open   |
+| 2 | Tuning IVFFLAT (lists) + PGVECTOR_PROBES       | Dev   | 2 zile   | Open   |
+| 3 | Dashboard: adaugă RPS și Error rate %          | Dev   | 1 zi     | Open   |
+| 4 | UAT complet pe set etalon (3×20 întrebări)     | QA    | 2 zile   | Open   |
 
 ---
 

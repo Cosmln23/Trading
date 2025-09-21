@@ -1,0 +1,1 @@
+postgresql://postgres:Nimsoc23091@/trading?host=/cloudsql/trading-472212:us-central1:trading-postgres
