@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import os, math, time, logging
+import os, math, time, logging, json, re
 import httpx
 from .db import get_conn
 from .observability import record_query_event
@@ -100,7 +100,7 @@ def post_answer(payload: AnswerRequest):
         if settings.rerank_url:
             t_r = time.perf_counter()
             try:
-                # Build a body that works with common rerankers and Cohere v2
+                # Cohere v2-compatible body; also keeps a generic structure
                 rr_model = os.getenv("RERANK_MODEL", "rerank-english-v3.0")
                 body = {
                     "query": q,
@@ -118,7 +118,6 @@ def post_answer(payload: AnswerRequest):
                 data = resp.json()
                 results = data.get("results") or data.get("scores") or []
                 score_map = {}
-                # Cohere v2: results: [{index, relevance_score, document:{id,text}}]
                 if isinstance(results, list) and results and isinstance(results[0], dict) and ("relevance_score" in results[0] or "document" in results[0]):
                     for it in results:
                         sc = float(it.get("relevance_score", it.get("score", 0.0)) or 0.0)
@@ -130,7 +129,6 @@ def post_answer(payload: AnswerRequest):
                             idx = it.get("index")
                             if isinstance(idx, int) and 0 <= idx < len(reranked):
                                 score_map[str(reranked[idx]["id"])] = sc
-                # Generic: list aligned numeric scores
                 elif isinstance(results, list) and results and not isinstance(results[0], dict) and len(results) == len(reranked):
                     for idx, sc in enumerate(results):
                         try:
@@ -147,9 +145,8 @@ def post_answer(payload: AnswerRequest):
                 logging.getLogger("app.answer").exception("rerank_error")
                 reranked = sorted(reranked, key=lambda x: x.get("sim", 0.0), reverse=True)
             finally:
-                rerank_ms = int((time.perf_counter() - t_r) * 1000)
+                _ = int((time.perf_counter() - t_r) * 1000)
         else:
-            rerank_ms = None
             reranked = sorted(reranked, key=lambda x: x.get("sim", 0.0), reverse=True)
 
         # Filter by tau and keep top-N
@@ -194,6 +191,86 @@ def post_answer(payload: AnswerRequest):
 
     # Require at least 3 citations for sufficient context
     insufficient = len(citations) < 3
+
+    # If we have enough citations, try to build LLM answer context-only
+    answer = {
+        "thesis": "Răspuns de test bazat pe contexte găsite [n]",
+        "setup": "Condiții sintetice pentru demo [n]",
+        "invalidation": "Invalidare de demo [n]",
+        "levels": "entry 100, stop 95, TP 112",
+        "risk": "med",
+        "uncertainty": "low"
+    }
+
+    if not insufficient and settings.llm_url:
+        t_llm = time.perf_counter()
+        try:
+            # Build strict JSON-only prompt
+            ctx_lines = []
+            for idx, c in enumerate(citations, start=1):
+                ctx_lines.append(f"[{idx}] doc={c.get('doc_id')} p.{c.get('page')} :: {c.get('preview')}")
+            ctx = "\n".join(ctx_lines)
+            sys_msg = (
+                "You are a trading assistant. Answer strictly using ONLY the provided context snippets, "
+                "citing with [n]. If context is insufficient, respond with an empty JSON fields. "
+                "Return JSON object with keys: thesis, setup, invalidation, levels, risk, uncertainty."
+            )
+            user_msg = (
+                f"Question: {q}\nContext:\n{ctx}\n"
+            )
+            payload_llm = {
+                "model": settings.llm_model or "gpt-4o-mini",
+                "temperature": float(getattr(settings, "llm_temperature", 0.2)),
+                "messages": [
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                "response_format": {"type": "json_object"}
+            }
+            headers = {"Content-Type": "application/json"}
+            if settings.llm_api_key:
+                headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+            with httpx.Client(timeout=15.0) as client:
+                r = client.post(str(settings.llm_url), json=payload_llm, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+            # Try to extract JSON text from common schemas
+            content_text = None
+            if isinstance(data, dict):
+                # OpenAI-like
+                try:
+                    content_text = data.get("choices", [{}])[0].get("message", {}).get("content")
+                except Exception:
+                    content_text = None
+                # Generic fields
+                if not content_text:
+                    content_text = data.get("output_text") or data.get("text") or data.get("message")
+                # Already structured
+                if not content_text and isinstance(data.get("answer"), dict):
+                    answer = data.get("answer")  # type: ignore
+                elif isinstance(content_text, str):
+                    # extract JSON
+                    m = re.search(r"\{[\s\S]*\}$", content_text.strip())
+                    raw_json = m.group(0) if m else content_text
+                    try:
+                        parsed = json.loads(raw_json)
+                        if isinstance(parsed, dict):
+                            answer = {
+                                "thesis": str(parsed.get("thesis", "")),
+                                "setup": str(parsed.get("setup", "")),
+                                "invalidation": str(parsed.get("invalidation", "")),
+                                "levels": str(parsed.get("levels", "")),
+                                "risk": str(parsed.get("risk", "")),
+                                "uncertainty": str(parsed.get("uncertainty", "")),
+                            }
+                    except Exception:
+                        pass
+        except Exception:
+            logging.getLogger("app.answer").exception("llm_error")
+        finally:
+            llm_ms = int((time.perf_counter() - t_llm) * 1000)
+            logging.getLogger("app.answer").info("llm_timing ms=%s", llm_ms)
+
     # Observability log
     try:
         logger = logging.getLogger("app.answer")
@@ -221,12 +298,4 @@ def post_answer(payload: AnswerRequest):
     if insufficient:
         return AnswerResponse(answer={"thesis":"","setup":"","invalidation":"","levels":"","risk":"—","uncertainty":"—"}, citations=[])
 
-    answer = {
-        "thesis": "Răspuns de test bazat pe contexte găsite [n]",
-        "setup": "Condiții sintetice pentru demo [n]",
-        "invalidation": "Invalidare de demo [n]",
-        "levels": "entry 100, stop 95, TP 112",
-        "risk": "med",
-        "uncertainty": "low"
-    }
     return AnswerResponse(answer=answer, citations=citations)
