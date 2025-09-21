@@ -113,9 +113,9 @@
 
 ## 10) Rezultate Performanță
 
-* **Query (p50/p95):** `~0.25s / ~9.5s` (din `answer_timing`)
+* **Query (p50/p95):** `~0.25s / ~0.29s` (10× apeluri consecutive; 1 outlier ~6.34s cold‑start)
 * **Daily Brief (p50/p95):** n/a (de completat după validare finală)
-* **Observații:** p95 influențat de cold‑start și dimensiunea inputului; tuning IVFFLAT/PROBES planificat
+* **Observații:** p95 stabil după IVFFLAT (lists=256); outlier unic datorat cold‑start; PROBES configurat; monitorizare în dashboard.
 
 ---
 
@@ -149,7 +149,7 @@
 | - | ------- | ----- | -------- | ------ |
 | 1 | Finalizează Brief + citări                     | Dev   | 2 zile   | Open   |
 | 2 | Tuning IVFFLAT (lists) + PGVECTOR_PROBES       | Dev   | 2 zile   | Open   |
-| 3 | Dashboard: adaugă RPS și Error rate %          | Dev   | 1 zi     | Open   |
+| 3 | Dashboard: adaugă RPS și Error rate %          | Dev   | 1 zi     | Done   |
 | 4 | UAT complet pe set etalon (3×20 întrebări)     | QA    | 2 zile   | Open   |
 
 ---
@@ -160,3 +160,22 @@
 * **QA Lead:** Nume, Dată, Semnătură
 * **Ops:** Nume, Dată, Semnătură
 * **Security:** Nume, Dată, Semnătură
+
+---
+
+## 16) Evidențe & Capturi
+
+* **Dashboard (Observability):** Trading API – Observability
+  - ID: `projects/845238406639/dashboards/99397ba3-35c0-46b3-95d2-146915bf5acf`
+  - Console: https://console.cloud.google.com/monitoring/dashboards?project=trading-472212
+  - Captură: `docs/screenshots/dashboard-observability.png` (de atașat)
+
+* **Test latență /api/answer (PowerShell 10×):**
+  - Log: `docs/evidence/answer-p95-2025-09-21.txt` (p95 ~286 ms; outlier ~6340 ms cold‑start)
+  - Captură: `docs/screenshots/answer-p95-run.png` (de atașat)
+
+* **Schema & Indexuri (pgvector):**
+  - Index activ: `idx_fragments_vec` (IVFFLAT, `embedding_vec vector_cosine_ops`, lists=256)
+  - Verificare: `docs/evidence/pg_indexes-fragments.txt` (de atașat)
+
+* **Securitate:** Basic Auth/CORS/rate‑limit — validat; captură: `docs/screenshots/security-health.png` (opțional)
