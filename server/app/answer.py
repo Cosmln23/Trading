@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import os, math, time, logging
+import httpx
 from .db import get_conn
 from .observability import record_query_event
 from .config import settings
@@ -60,8 +61,7 @@ def post_answer(payload: AnswerRequest):
     num_candidates = 0
 
     if qvec is not None:
-        # Use Euclidean operator <-> (available on all pgvector versions) and convert to cosine-like score
-        # because vectors are L2-normalized in upload.
+        # Retrieve top-K by vector distance
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -80,19 +80,94 @@ def post_answer(payload: AnswerRequest):
             rows = []
         num_candidates = len(rows)
         tau = float(getattr(settings, "relevance_tau", 0.20))
+
+        # Build candidates with similarity
+        cands = []
         for r in rows:
             dist = float(r[5]) if r[5] is not None else 1.0
             sim = 1.0 - dist
-            if sim >= tau:
-                citations.append({
-                    "label": r[0],
-                    "doc_id": r[1],
-                    "page": r[2],
-                    "chunk_index": r[3],
-                    "preview": (r[4] or "")[:240],
-                    "url": "#"
-                })
-        citations = citations[: int(getattr(settings, "retrieval_n", 5))]
+            cands.append({
+                "id": r[0],
+                "doc_id": r[1],
+                "page": r[2],
+                "chunk_index": r[3],
+                "text": r[4] or "",
+                "sim": sim,
+            })
+
+        # Optional: rerank if configured
+        reranked = cands
+        if settings.rerank_url:
+            t_r = time.perf_counter()
+            try:
+                # Build a body that works with common rerankers and Cohere v2
+                rr_model = os.getenv("RERANK_MODEL", "rerank-english-v3.0")
+                body = {
+                    "query": q,
+                    "candidates": [{"id": c["id"], "text": (c["text"] or "")[:2000]} for c in cands],
+                    "documents": [{"id": c["id"], "text": (c["text"] or "")[:2000]} for c in cands],
+                    "model": rr_model,
+                    "top_n": max(1, int(getattr(settings, "retrieval_n", 5)))
+                }
+                headers = {"Content-Type": "application/json"}
+                if settings.rerank_api_key:
+                    headers["Authorization"] = f"Bearer {settings.rerank_api_key}"
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.post(str(settings.rerank_url), json=body, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results") or data.get("scores") or []
+                score_map = {}
+                # Cohere v2: results: [{index, relevance_score, document:{id,text}}]
+                if isinstance(results, list) and results and isinstance(results[0], dict) and ("relevance_score" in results[0] or "document" in results[0]):
+                    for it in results:
+                        sc = float(it.get("relevance_score", it.get("score", 0.0)) or 0.0)
+                        doc = it.get("document") or {}
+                        sid = doc.get("id") or None
+                        if sid is not None:
+                            score_map[str(sid)] = sc
+                        else:
+                            idx = it.get("index")
+                            if isinstance(idx, int) and 0 <= idx < len(reranked):
+                                score_map[str(reranked[idx]["id"])] = sc
+                # Generic: list aligned numeric scores
+                elif isinstance(results, list) and results and not isinstance(results[0], dict) and len(results) == len(reranked):
+                    for idx, sc in enumerate(results):
+                        try:
+                            score_map[str(reranked[idx]["id"])] = float(sc)
+                        except Exception:
+                            score_map[str(reranked[idx]["id"])] = 0.0
+                if score_map:
+                    for c in reranked:
+                        c["rerank_score"] = float(score_map.get(str(c["id"]), 0.0))
+                    reranked = sorted(reranked, key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+                else:
+                    reranked = sorted(reranked, key=lambda x: x.get("sim", 0.0), reverse=True)
+            except Exception:
+                logging.getLogger("app.answer").exception("rerank_error")
+                reranked = sorted(reranked, key=lambda x: x.get("sim", 0.0), reverse=True)
+            finally:
+                rerank_ms = int((time.perf_counter() - t_r) * 1000)
+        else:
+            rerank_ms = None
+            reranked = sorted(reranked, key=lambda x: x.get("sim", 0.0), reverse=True)
+
+        # Filter by tau and keep top-N
+        kept = []
+        for c in reranked:
+            if float(c.get("sim", 0.0)) >= tau:
+                kept.append(c)
+            if len(kept) >= int(getattr(settings, "retrieval_n", 5)):
+                break
+        for c in kept:
+            citations.append({
+                "label": c["id"],
+                "doc_id": c["doc_id"],
+                "page": c["page"],
+                "chunk_index": c["chunk_index"],
+                "preview": (c["text"] or "")[:240],
+                "url": "#"
+            })
     else:
         # Fallback (no embeddings): simple latest docs in collection
         with conn.cursor() as cur:
@@ -117,7 +192,8 @@ def post_answer(payload: AnswerRequest):
                 "url": "#"
             })
 
-    insufficient = len(citations) < 1
+    # Require at least 3 citations for sufficient context
+    insufficient = len(citations) < 3
     # Observability log
     try:
         logger = logging.getLogger("app.answer")
