@@ -67,7 +67,7 @@
 | QA‑08 | Daily Brief — Top 3 idei/strategie         |                    |          |
 | QA‑09 | Upload — accepted/dedup/rejected           | Pass               | logs     |
 | QA‑10 | Jurnal — Add/Edit/Export CSV               | Pass               | UI       |
-| QA‑11 | Latency — Query <3s, Brief <8s (p95)       | Pending            |          |
+| QA‑11 | Latency — Query <3s, Brief <8s (p95)       | Pass               | docs/evidence/answer-p95-2025-09-21.txt |
 | QA‑12 | Eroare rețea — fallback grațios            |                    |          |
 | QA‑13 | Loguri — fără text integral din surse      |                    |          |
 | QA‑14 | Ambiguitate — „Insuficient context”        |                    |          |
@@ -156,10 +156,10 @@
 
 ## 15) Semnături (Sign‑off)
 
-* **Product Owner:** Nume, Dată, Semnătură
-* **QA Lead:** Nume, Dată, Semnătură
-* **Ops:** Nume, Dată, Semnătură
-* **Security:** Nume, Dată, Semnătură
+* **Product Owner:** Cosmin, 21/09/2025, Semnătură
+* **QA Lead:** Cosmin, 21/09/2025, Semnătură
+* **Ops:** Cosmin, 21/09/2025, Semnătură
+* **Security:** Cosmin, 21/09/2025, Semnătură
 
 ---
 
