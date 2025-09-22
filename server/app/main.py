@@ -19,6 +19,7 @@ from .observability import router as observability_router
 from .chat import router as chat_router
 from .catalog import router as catalog_router
 from .db import get_conn
+from .portfolio import router as portfolio_router
 
 app = FastAPI(title="Trading Assistant API", version="1.0.0")
 
@@ -120,6 +121,7 @@ app.include_router(journal_router)
 app.include_router(observability_router)
 app.include_router(catalog_router)
 app.include_router(chat_router)
+app.include_router(portfolio_router)
 
 ui_root = Path("/app")
 if (ui_root / "index.html").exists() and (ui_root / "assets").exists():

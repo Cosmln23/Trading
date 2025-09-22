@@ -49,6 +49,23 @@ def _ensure_session(chat_id: Optional[str]) -> str:
         return sid
 
 
+def _portfolio_summary() -> str:
+    with get_conn().cursor() as cur:
+        cur.execute("SELECT id, ts FROM portfolio_snapshots ORDER BY ts DESC LIMIT 1")
+        row = cur.fetchone()
+        if not row:
+            return ''
+        sid = row[0]
+        cur.execute("SELECT symbol, quantity, cost FROM portfolio_holdings WHERE snapshot_id=%s ORDER BY symbol LIMIT 50", (sid,))
+        holds = cur.fetchall()
+    parts = []
+    for (sym, qty, cost) in holds:
+        q = (float(qty) if qty is not None else 0)
+        c = (float(cost) if cost is not None else 0)
+        parts.append(f"{sym}:{q}@{c}")
+    return "; ".join(parts)
+
+
 @router.post('/chat/create', response_model=ChatCreateResponse)
 def create_chat():
     sid = _ensure_session(None)
@@ -111,14 +128,16 @@ def post_chat(payload: ChatPostRequest):
                 break
         citations = kept
 
+    # Portfolio summary
+    port = _portfolio_summary()
+
     # Compose context-only answer (LLM optional; fallback template)
     answer_text = ''
     if settings.llm_url and settings.llm_api_key and citations:
-        # Minimal prompt; keep simple to avoid extra deps
-        import httpx, json
-        sys_prompt = 'Răspunde concis în română strict din fragmentele date. Include [n] pentru fiecare afirmație importantă. Nu inventa.'
+        import httpx
+        sys_prompt = 'Răspunde concis în română strict din fragmentele date; nu inventa. Explică de ce în 1-2 fraze. Ține cont de portofoliu (expuneri).'
         content = '\n\n'.join([f"[{i+1}] {c['text']}" for i,c in enumerate(citations)])
-        user = f"Întrebare: {q}\nFragmente:\n{content}"
+        user = f"Întrebare: {q}\nPortofoliu: {port or '—'}\nFragmente:\n{content}"
         body = { 'model': settings.llm_model or 'gpt-4o-mini', 'temperature': float(settings.llm_temperature or 0.2), 'messages': [ { 'role': 'system', 'content': sys_prompt }, { 'role': 'user', 'content': user } ] }
         headers = { 'Authorization': f"Bearer {settings.llm_api_key}", 'Content-Type': 'application/json' }
         try:
@@ -128,19 +147,17 @@ def post_chat(payload: ChatPostRequest):
             data = resp.json()
             answer_text = (data.get('choices') or [{}])[0].get('message',{}).get('content','').strip()
         except Exception:
-            answer_text = f"(demo) Răspuns context-only pentru: {q}"
+            answer_text = f"(demo) Răspuns context-only pentru: {q} | portofoliu: {('n/a' if not port else 'ok')}"
     else:
-        # Fallback template
         if citations:
             nums = ' '.join([f"[{i+1}]" for i,_ in enumerate(citations)])
-            answer_text = f"Răspuns scurt bazat pe {len(citations)} fragmente {nums}. Întrebare: {q}"
+            answer_text = f"Răspuns scurt bazat pe {len(citations)} fragmente {nums}. Întrebare: {q}. Portofoliu: {port or '—'}"
         else:
             answer_text = "Nu am găsit context suficient (încarcă surse sau relaxează filtrele)."
 
     with get_conn().cursor() as cur:
         cur.execute("INSERT INTO chat_messages (chat_id, role, content, citations) VALUES (%s,%s,%s,%s)", (sid, 'assistant', answer_text, len(citations)))
         get_conn().commit()
-    # return full convo
     with get_conn().cursor() as cur:
         cur.execute("SELECT role, content FROM chat_messages WHERE chat_id=%s ORDER BY ts ASC LIMIT 200", (sid,))
         rows = cur.fetchall()
