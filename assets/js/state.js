@@ -10,7 +10,8 @@
     brief: null,
     journal: [],
     uploads: [],
-    journalPrefill: null
+    journalPrefill: null,
+    catalog: { books: [], news: [] }
   };
 
   function setActiveTab(tab){ state.activeTab = tab; }
@@ -23,12 +24,14 @@
   function setUploads(list){ state.uploads = Array.isArray(list) ? list : []; }
   function setLastQuestion(q){ state.lastQuestion = q || ''; }
   function setJournalPrefill(pref){ state.journalPrefill = pref || null; }
+  function setCatalog(c){ state.catalog = c || { books: [], news: [] }; }
 
   // export
   global.__UI_STATE__ = {
     state,
     setActiveTab, setMockMode, setSettings, setAnswer, setBrief,
-    setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill
+    setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill,
+    setCatalog
   };
 })(window);
 

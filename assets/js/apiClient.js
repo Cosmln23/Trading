@@ -53,7 +53,16 @@
     return fetchJson('/observability/events' + (qs.toString() ? ('?' + qs.toString()) : ''));
   }
 
-  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents };
+  async function getCatalog(params){
+    if (state.mockMode) return { books: [], news: [], count: { books: 0, news: 0 } };
+    const qs = new URLSearchParams();
+    if (params?.collection) qs.set('collection', params.collection);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    return fetchJson('/api/catalog' + (qs.toString() ? ('?' + qs.toString()) : ''));
+  }
+
+  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog };
 })(window);
 
 

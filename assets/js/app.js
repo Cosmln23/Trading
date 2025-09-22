@@ -1,7 +1,7 @@
 // Main UI logic: bindings, rendering, and interactions
 (function(){
-  const { state, setActiveTab, setMockMode, setSettings, setAnswer, setBrief, setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill } = window.__UI_STATE__;
-  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents } = window.__API__;
+  const { state, setActiveTab, setMockMode, setSettings, setAnswer, setBrief, setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill, setCatalog } = window.__UI_STATE__;
+  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog } = window.__API__;
 
   function mountIcons(){
     if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
@@ -35,7 +35,48 @@
   const btnMenu = document.getElementById('btnMenu');
   const mobileActions = document.getElementById('mobileActions');
 
+  const btnCatalog = document.getElementById('btnCatalog');
+  const mBtnCatalog = document.getElementById('mBtnCatalog');
   const btnBrief = document.getElementById('btnBrief');
+  // Catalog modal
+  const catalogModal = document.getElementById('catalogModal');
+  const catalogBooks = document.getElementById('catalogBooks');
+  const catalogNews = document.getElementById('catalogNews');
+  const catalogSearch = document.getElementById('catalogSearch');
+  const catalogCollection = document.getElementById('catalogCollection');
+  const refreshCatalog = document.getElementById('refreshCatalog');
+  function openCatalog(){ catalogModal.classList.remove('hidden'); loadCatalog(); }
+  function closeCatalog(){ catalogModal.classList.add('hidden'); }
+  document.querySelectorAll('[data-close-catalog]').forEach(b => b.addEventListener('click', closeCatalog));
+  btnCatalog?.addEventListener('click', openCatalog); mBtnCatalog?.addEventListener('click', openCatalog);
+  refreshCatalog?.addEventListener('click', () => loadCatalog());
+  catalogSearch?.addEventListener('input', () => loadCatalog());
+  catalogCollection?.addEventListener('change', () => loadCatalog());
+
+  async function loadCatalog(){
+    try{
+      const params = { q: (catalogSearch?.value||'').trim() || undefined, collection: (catalogCollection?.value||'') || undefined, limit: 500 };
+      const data = await getCatalog(params);
+      setCatalog(data);
+      function row(x){
+        const at = x.created_at ? new Date(x.created_at).toLocaleString() : '—';
+        return `<div class="rounded-lg border bg-white px-2 py-2 text-sm flex items-start justify-between">
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">${x.file_name || x.doc_id}</div>
+            <div class="text-xs text-gray-500 truncate">${x.doc_id} • ${x.collection || '—'} • fragmente: ${x.fragments} • embedded: ${x.embedded} • ${at}${x.ocr_used ? ' • OCR' : ''}</div>
+          </div>
+          <div class="text-xs text-gray-500 ml-2">${x.inserted} ins.</div>
+        </div>`;
+      }
+      catalogBooks.innerHTML = (data?.books||[]).map(row).join('') || '<div class="text-xs text-gray-400">—</div>';
+      catalogNews.innerHTML = (data?.news||[]).map(row).join('') || '<div class="text-xs text-gray-400">—</div>';
+      mountIcons();
+    }catch(e){
+      catalogBooks.innerHTML = '<div class="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md inline-flex items-center gap-2"><i data-lucide="circle-alert" class="w-4 h-4"></i>Eroare la încărcarea catalogului.</div>';
+      catalogNews.innerHTML = '';
+      mountIcons();
+    }
+  }
   const btnGuide = document.getElementById('btnGuide');
   const mBtnBrief = document.getElementById('mBtnBrief');
   const briefModal = document.getElementById('briefModal');
@@ -60,6 +101,7 @@
   const jf_stop = document.getElementById('jf_stop');
   const jf_tp = document.getElementById('jf_tp');
   const jf_rationale = document.getElementById('jf_rationale');
+  const jf_tags = document.getElementById('jf_tags');
   const jf_reset = document.getElementById('jf_reset');
   const exportCSVBtn = document.getElementById('exportCSV');
   const riskHint = document.getElementById('riskHint');
@@ -336,21 +378,36 @@
       sourcesList.innerHTML = '';
       cits.forEach((c, idx) => {
         const li = document.createElement('li'); li.className = 'text-sm';
+        const preview = truncate(c?.preview || '', 240);
+        const docId = c?.doc_id || 'doc';
+        const page = c?.page ?? '—';
         li.innerHTML = `
           <div class="flex items-start gap-2 rounded-lg border bg-gray-50 px-2 py-2">
             <span class="text-xs font-medium text-gray-700">[${idx+1}]</span>
             <div class="flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs text-gray-700">${c?.doc_id ?? 'doc'}</span>
+                <span class="text-xs text-gray-700">${docId}</span>
                 <span class="text-xs text-gray-500">•</span>
-                <span class="text-xs text-gray-500">p.${c?.page ?? '—'}</span>
+                <span class="text-xs text-gray-500">p.${page}</span>
               </div>
-              <div class="text-xs text-gray-600 truncate">${truncate(c?.preview || '', 240)}</div>
+              <div class="text-xs text-gray-600 truncate">${preview}</div>
             </div>
-            <a class="ml-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border bg-white hover:bg-gray-50" href="${c?.url || '#'}" target="_blank" rel="noopener noreferrer">
+            <a class="open-frag ml-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border bg-white hover:bg-gray-50" href="#" data-doc="${docId}" data-page="${page}" data-preview="${preview}">
               <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Deschide pasaj
             </a>
           </div>`;
+        const link = li.querySelector('.open-frag');
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          try{
+            const w = window.open('', '_blank', 'noopener,noreferrer,width=520,height=360');
+            if (w && !w.closed){
+              const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pasaj</title><style>body{font-family:Inter,system-ui,sans-serif;padding:12px} .meta{color:#6b7280;font-size:12px;margin-bottom:8px} .content{font-size:14px;line-height:1.5}</style></head><body><div class="meta">${link.dataset.doc} • p.${link.dataset.page}</div><div class="content">${(link.dataset.preview||'').replace(/</g,'&lt;')}</div></body></html>`;
+              w.document.write(html);
+              w.document.close();
+            }
+          }catch(_e){ /* noop */ }
+        });
         sourcesList.appendChild(li);
       });
 

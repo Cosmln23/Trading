@@ -1,0 +1,68 @@
+﻿{
+  "displayName": "Trading API - Observability",
+  "mosaicLayout": {
+    "columns": 12,
+    "tiles": [
+      {
+        "xPos": 0, "yPos": 0, "width": 6, "height": 4,
+        "widget": {
+          "title": "Requests per minute",
+          "xyChart": {
+            "chartOptions": {"mode": "COLOR"},
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "RPM",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'run.googleapis.com/request_count' | filter resource.service_name == 'trading-api' && resource.location == 'us-central1' | align rate(1m) | group_by [], [value_request_count_aggregate: aggregate(value.request_count)]"
+                }
+              }
+            ],
+            "yAxis": {"label": "req/min", "scale": "LINEAR"}
+          }
+        }
+      },
+      {
+        "xPos": 6, "yPos": 0, "width": 6, "height": 4,
+        "widget": {
+          "title": "Error rate (%)",
+          "xyChart": {
+            "chartOptions": {"mode": "COLOR"},
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "Error %",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'run.googleapis.com/request_count' | filter resource.service_name == 'trading-api' && resource.location == 'us-central1' | align rate(1m) | group_by [], [total: aggregate(value.request_count)] | every 1m ; fetch cloud_run_revision | metric 'run.googleapis.com/request_count' | filter resource.service_name == 'trading-api' && resource.location == 'us-central1' && (metric.response_code_class == '4xx' || metric.response_code_class == '5xx') | align rate(1m) | group_by [], [errors: aggregate(value.request_count)] | every 1m ; join | value errors / total * 100"
+                }
+              }
+            ],
+            "yAxis": {"label": "%", "scale": "LINEAR"}
+          }
+        }
+      },
+      {
+        "xPos": 0, "yPos": 4, "width": 12, "height": 4,
+        "widget": {
+          "title": "Latency p95 (ms)",
+          "xyChart": {
+            "chartOptions": {"mode": "COLOR"},
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p95",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'run.googleapis.com/request_latencies' | filter resource.service_name == 'trading-api' && resource.location == 'us-central1' | align percentile(95) | group_by [], [p95: aggregate(value.request_latencies)]"
+                }
+              }
+            ],
+            "yAxis": {"label": "ms", "scale": "LINEAR"}
+          }
+        }
+      }
+    ]
+  }
+}

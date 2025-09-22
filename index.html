@@ -95,6 +95,10 @@
         </div>
 
         <div class="hidden md:flex items-center gap-2">
+          <button id="btnCatalog" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Catalog">
+            <i data-lucide="library" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Catalog</span>
+          </button>
           <button id="btnObservability" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Observability">
             <i data-lucide="activity" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Observability</span>
@@ -141,6 +145,10 @@
       <!-- Mobile Actions -->
       <div id="mobileActions" class="md:hidden mt-3 hidden">
         <div class="flex flex-wrap items-center gap-2">
+          <button id="mBtnCatalog" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+            <i data-lucide="library" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Catalog</span>
+          </button>
           <button id="mBtnBrief" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10">
             <i data-lucide="sunrise" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Daily Brief</span>
@@ -340,6 +348,54 @@
           <div id="obsEvents" class="h-[260px] overflow-auto rounded-lg border bg-white p-2 space-y-1"></div>
         </div>
         <div class="text-xs text-gray-500">Sursă: buffer in‑memory per instanță /observability; pentru istoric folosește dashboardul GCP.</div>
+      </div>
+    </div>
+
+    <!-- Catalog Modal -->
+    <div id="catalogModal" class="hidden fixed inset-0 z-50">
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="relative mx-auto my-8 w-[95%] max-w-5xl bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center gap-2">
+            <i data-lucide="library" class="w-5 h-5 text-gray-700"></i>
+            <h2 class="text-lg tracking-tight font-semibold">Catalog documente</h2>
+            <span class="text-xs text-gray-500">Books vs News</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="catalogSearch" type="text" placeholder="Caută după nume…" class="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+            <select id="catalogCollection" class="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+              <option value="">toate colecțiile</option>
+              <option value="EQ_INV">EQ-INV</option>
+              <option value="EQ_MOM_PEAD">EQ-MOM/PEAD</option>
+              <option value="OPT_INCOME">OPT-INCOME</option>
+            </select>
+            <button id="refreshCatalog" class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border bg-gray-50 hover:bg-gray-100">
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Actualizează
+            </button>
+            <button data-close-catalog class="p-2 rounded-lg border bg-gray-50 hover:bg-gray-100" aria-label="Închide">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <div class="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="rounded-xl border border-gray-200 bg-gray-50/50 p-3">
+            <div class="text-sm font-semibold mb-2">Books</div>
+            <div id="catalogBooks" class="space-y-2">
+              <div class="animate-pulse h-16 bg-gray-100 rounded"></div>
+              <div class="animate-pulse h-16 bg-gray-100 rounded"></div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-gray-200 bg-gray-50/50 p-3">
+            <div class="text-sm font-semibold mb-2">News</div>
+            <div id="catalogNews" class="space-y-2">
+              <div class="animate-pulse h-16 bg-gray-100 rounded"></div>
+              <div class="animate-pulse h-16 bg-gray-100 rounded"></div>
+            </div>
+          </div>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-200 text-xs text-gray-500">
+          Documentele sunt grupate după tip (heuristic: nume fișier conține "news" etc.).
+        </div>
       </div>
     </div>
 
