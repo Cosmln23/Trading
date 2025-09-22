@@ -16,6 +16,7 @@ from .brief import router as brief_router
 from .upload import router as upload_router
 from .journal import router as journal_router
 from .observability import router as observability_router
+from .chat import router as chat_router
 from .catalog import router as catalog_router
 from .db import get_conn
 
@@ -118,6 +119,7 @@ app.include_router(upload_router)
 app.include_router(journal_router)
 app.include_router(observability_router)
 app.include_router(catalog_router)
+app.include_router(chat_router)
 
 ui_root = Path("/app")
 if (ui_root / "index.html").exists() and (ui_root / "assets").exists():

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 ALLOWED_EXT = {"pdf", "txt", "md", "docx", "csv"}
 
 @router.post("/upload")
-async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form("A")):
+async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form("A"), kind: str = Form("book")):
     t0 = time.perf_counter()
     results = []
     ingest_count = 0
@@ -170,8 +170,8 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                                 # Ignore OCR errors, keep original text
                                 pass
 
-                    collection = map_collection(strategy)
-                    doc_id = f"upload:{name}"
+                    collection = map_collection(strategy) if kind != "news" else "NEWS"
+                    doc_id = (f"news:{name}" if kind == "news" else f"upload:{name}")
                     chunks = split_text(text, max_chars=3500, overlap=500)
                     # enrich result with stats
                     text_chars = len(text or "")
@@ -294,7 +294,7 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                 name = rec.get("name")
                 stats = per_file_stats.get(name, {})
                 cur.execute(
-                    "INSERT INTO upload_history (file_name, file_size, file_hash, doc_id, collection, text_chars, chunk_count, inserted_count, skipped_conflict_count, embedded_count, ocr_used) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "INSERT INTO upload_history (file_name, file_size, file_hash, doc_id, collection, text_chars, chunk_count, inserted_count, skipped_conflict_count, embedded_count, ocr_used, kind) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         name,
                         stats.get("file_size"),
@@ -307,6 +307,7 @@ async def upload_files(files: List[UploadFile] = File(...), strategy: str = Form
                         stats.get("skipped"),
                         stats.get("embedded"),
                         True if rec.get("ocr_used") or stats.get("ocr_used") else False,
+                        kind if kind in ("book","news") else "book",
                     ),
                 )
             get_conn().commit()

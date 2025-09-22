@@ -111,6 +111,10 @@
             <i data-lucide="book-open" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Ghid începător</span>
           </button>
+          <button id="btnChat" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Chat">
+            <i data-lucide="messages-square" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Chat</span>
+          </button>
           <button id="btnJournal" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10" aria-label="Jurnal">
             <i data-lucide="notebook-pen" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Jurnal</span>
@@ -160,6 +164,10 @@
           <button id="mBtnUpload" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10">
             <i data-lucide="upload-cloud" class="w-4 h-4"></i>
             <span class="text-sm font-medium">Upload</span>
+          </button>
+          <button id="mBtnChat" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/70 backdrop-blur border border-gray-200 hover:bg-white transition focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+            <i data-lucide="messages-square" class="w-4 h-4"></i>
+            <span class="text-sm font-medium">Chat</span>
           </button>
           <button id="mBtnSettings" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white border border-gray-900 hover:bg-gray-800 transition focus:outline-none focus:ring-2 focus:ring-gray-900/20">
             <i data-lucide="settings" class="w-4 h-4"></i>
@@ -221,6 +229,11 @@
               <i data-lucide="sparkles" class="w-4 h-4"></i>
               Răspunde
             </button>
+            <label class="inline-flex items-center gap-2 text-xs text-gray-700 ml-1" aria-label="Comută chat">
+              <input id="toggleChatMode" type="checkbox" class="sr-only">
+              <span class="w-9 h-5 rounded-full bg-gray-200 relative"><span id="toggleChatKnob" class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-gray-900 transition-all"></span></span>
+              <span id="toggleChatLabel">Chat</span>
+            </label>
           </form>
         </div>
 
@@ -303,6 +316,10 @@
                   <i data-lucide="send" class="w-4 h-4"></i>
                   Trimite în Jurnal
                 </button>
+                <button id="toChatInlineBtn" class="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm hover:bg-gray-50">
+                  <i data-lucide="messages-square" class="w-4 h-4"></i>
+                  Continuă în Chat
+                </button>
               </div>
 
               <div class="pt-2 border-t border-gray-200">
@@ -310,6 +327,15 @@
                 <ul id="sourcesList" class="space-y-2"></ul>
               </div>
             </div>
+          </div>
+
+          <!-- Chat Transcript inline -->
+          <div id="inlineChat" class="hidden mt-3 bg-white border border-gray-200 rounded-2xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-sm font-semibold">Chat</div>
+              <span id="inlineChatId" class="text-xs text-gray-500"></span>
+            </div>
+            <div id="inlineChatMsgs" class="space-y-2 max-h-80 overflow-auto"></div>
           </div>
         </div>
       </div>
@@ -652,6 +678,32 @@
       </div>
     </div>
 
+    <!-- Chat Modal -->
+    <div id="chatModal" class="hidden fixed inset-0 z-50">
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="relative mx-auto my-8 w-[95%] max-w-3xl bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center gap-2">
+            <i data-lucide="messages-square" class="w-5 h-5 text-gray-700"></i>
+            <h2 class="text-lg tracking-tight font-semibold">Chat</h2>
+            <span id="chatIdBadge" class="text-xs text-gray-500"></span>
+          </div>
+          <button data-close-chat class="p-2 rounded-lg border bg-gray-50 hover:bg-gray-100" aria-label="Închide">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="p-4 grid grid-rows-[1fr_auto] h-[70vh]">
+          <div id="chatMessages" class="overflow-auto space-y-2 pr-1">
+            <div class="text-xs text-gray-500">Începe o conversație nouă.</div>
+          </div>
+          <form id="chatForm" class="mt-3 flex items-center gap-2">
+            <input id="chatInput" type="text" placeholder="Scrie mesajul…" class="flex-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 placeholder:text-gray-400">
+            <button id="chatSend" type="submit" class="inline-flex items-center gap-2 rounded-lg bg-gray-900 text-white px-4 py-2.5 text-sm font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/20"><i data-lucide="send" class="w-4 h-4"></i> Trimite</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <!-- Upload Modal -->
     <div id="uploadModal" class="hidden fixed inset-0 z-50">
       <div class="absolute inset-0 bg-black/40"></div>
@@ -689,6 +741,11 @@
                 <option value="B">B — EQ-MOM/PEAD</option>
                 <option value="C">C — OPT-INCOME</option>
               </select>
+                <label class="block text-xs text-gray-500 mb-1 mt-2">Tip document</label>
+                <select id="uploadKind" class="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+                  <option value="book">Book</option>
+                  <option value="news">News</option>
+                </select>
               <button id="btnStartUpload" class="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 text-white px-3 py-2 text-sm hover:bg-gray-800">
                 <i data-lucide="arrow-up-right" class="w-4 h-4"></i> <span id="uploadBtnLabel">Încarcă</span>
               </button>
@@ -707,6 +764,12 @@
               <div class="text-xs text-gray-500 mb-1">Upload logs (live)</div>
               <div id="uploadLogs" class="h-24 overflow-auto rounded-lg border bg-white p-2 text-xs text-gray-700">
                 <div class="text-gray-400">În așteptare…</div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs text-gray-500 mb-1">Istoric upload (ultimele)</div>
+              <div id="uploadHistoryList" class="space-y-2">
+                <div class="animate-pulse h-12 bg-gray-100 rounded"></div>
               </div>
             </div>
           </div>

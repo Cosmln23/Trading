@@ -30,7 +30,8 @@ def get_catalog(collection: Optional[str] = Query(default=None), q: Optional[str
                        max(created_at) AS created_at,
                        sum(inserted_count) AS inserted_sum,
                        sum(embedded_count) AS embedded_sum,
-                       bool_or(coalesce(ocr_used,false)) AS ocr_used
+                       bool_or(coalesce(ocr_used,false)) AS ocr_used,
+                       max(kind) AS kind
                 FROM upload_history
                 GROUP BY doc_id
             ), fr AS (
@@ -38,7 +39,7 @@ def get_catalog(collection: Optional[str] = Query(default=None), q: Optional[str
                 FROM fragments
                 GROUP BY doc_id
             )
-            SELECT uh.doc_id, uh.file_name, uh.collection, uh.created_at, uh.inserted_sum, uh.embedded_sum, uh.ocr_used, coalesce(fr.fragments,0) AS fragments
+            SELECT uh.doc_id, uh.file_name, uh.collection, uh.created_at, uh.inserted_sum, uh.embedded_sum, uh.ocr_used, coalesce(fr.fragments,0) AS fragments, uh.kind
             FROM uh
             LEFT JOIN fr ON fr.doc_id = uh.doc_id
             ORDER BY uh.created_at DESC NULLS LAST
@@ -55,6 +56,7 @@ def get_catalog(collection: Optional[str] = Query(default=None), q: Optional[str
                 "embedded": int(r[5] or 0),
                 "ocr_used": bool(r[6]) if r[6] is not None else False,
                 "fragments": int(r[7] or 0),
+                "kind": r[8] or None,
             }
             items.append(rec)
 
@@ -69,9 +71,43 @@ def get_catalog(collection: Optional[str] = Query(default=None), q: Optional[str
     books: List[Dict[str, Any]] = []
     news: List[Dict[str, Any]] = []
     for x in items[:limit]:
-        kind = _infer_kind(x.get("file_name"))
+        kind = (x.get("kind") or _infer_kind(x.get("file_name")))
         (news if kind == "news" else books).append(x)
 
     return JSONResponse(content={"books": books, "news": news, "count": {"books": len(books), "news": len(news)}})
+
+
+@router.get("/upload_history")
+def get_upload_history(limit: int = Query(default=50, ge=1, le=500)):
+    items: List[Dict[str, Any]] = []
+    with get_conn().cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, file_name, file_size, file_hash, doc_id, collection, text_chars, chunk_count,
+                   inserted_count, skipped_conflict_count, embedded_count, ocr_used, created_at
+            FROM upload_history
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (limit,)
+        )
+        rows = cur.fetchall()
+    for r in rows:
+        items.append({
+            "id": r[0],
+            "file_name": r[1],
+            "file_size": r[2],
+            "file_hash": r[3],
+            "doc_id": r[4],
+            "collection": r[5],
+            "text_chars": r[6],
+            "chunk_count": r[7],
+            "inserted_count": r[8],
+            "skipped_conflict_count": r[9],
+            "embedded_count": r[10],
+            "ocr_used": bool(r[11]) if r[11] is not None else False,
+            "created_at": (r[12].isoformat() if r[12] else None),
+        })
+    return JSONResponse(content={"list": items})
 
 

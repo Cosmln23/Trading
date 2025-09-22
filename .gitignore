@@ -12,3 +12,21 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# Secrets
+llm_key.txt
+llm_url.txt
+cohere_key.txt
+cohere_url.txt
+.env
+*.env
+
+
+# Secrets
+llm_key.txt
+llm_url.txt
+cohere_key.txt
+cohere_url.txt
+.env
+*.env
+

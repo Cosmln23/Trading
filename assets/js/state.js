@@ -11,7 +11,9 @@
     journal: [],
     uploads: [],
     journalPrefill: null,
-    catalog: { books: [], news: [] }
+    catalog: { books: [], news: [] },
+    chat: { chatId: null, messages: [] },
+    chatMode: false
   };
 
   function setActiveTab(tab){ state.activeTab = tab; }
@@ -25,13 +27,17 @@
   function setLastQuestion(q){ state.lastQuestion = q || ''; }
   function setJournalPrefill(pref){ state.journalPrefill = pref || null; }
   function setCatalog(c){ state.catalog = c || { books: [], news: [] }; }
+  function setChatSession(id){ state.chat.chatId = id || null; }
+  function setChatMessages(msgs){ state.chat.messages = Array.isArray(msgs) ? msgs : []; }
+  function setChatMode(on){ state.chatMode = !!on; }
 
   // export
   global.__UI_STATE__ = {
     state,
     setActiveTab, setMockMode, setSettings, setAnswer, setBrief,
     setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill,
-    setCatalog
+    setCatalog,
+    setChatSession, setChatMessages, setChatMode
   };
 })(window);
 

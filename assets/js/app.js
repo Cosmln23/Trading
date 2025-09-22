@@ -1,7 +1,7 @@
 // Main UI logic: bindings, rendering, and interactions
 (function(){
   const { state, setActiveTab, setMockMode, setSettings, setAnswer, setBrief, setJournal, addJournal, setUploads, setLastQuestion, setJournalPrefill, setCatalog } = window.__UI_STATE__;
-  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog } = window.__API__;
+  const { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog, getUploadHistory } = window.__API__;
 
   function mountIcons(){
     if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
@@ -24,6 +24,7 @@
   const sourcesList = document.getElementById('sourcesList');
   const answerStrategy = document.getElementById('answerStrategy');
   const toJournalBtn = document.getElementById('toJournal');
+  const toChatInlineBtn = document.getElementById('toChatInlineBtn');
 
   const chipK = document.getElementById('chipK');
   const chipN = document.getElementById('chipN');
@@ -114,6 +115,7 @@
   const fileInput = document.getElementById('fileInput');
   const uploadList = document.getElementById('uploadList');
   const uploadStrategy = document.getElementById('uploadStrategy');
+  const uploadKind = document.getElementById('uploadKind');
   const btnStartUpload = document.getElementById('btnStartUpload');
   const uploadBtnLabel = document.getElementById('uploadBtnLabel');
   const btnRetryUpload = document.getElementById('btnRetryUpload');
@@ -336,6 +338,16 @@
   let lastAnswerPayload = null;
   async function askAnswer(question){
     setLastQuestion(question);
+    if (state.chatMode){
+      // send as chat
+      try{
+        const r = await window.__API__.postChat({ chat_id: state.chat.chatId, collection: state.activeTab, message: question });
+        state.chat.chatId = r?.chat_id || state.chat.chatId;
+        renderInlineChat(r?.messages || []);
+        inlineChatId.textContent = state.chat.chatId ? `ID: ${state.chat.chatId}` : '';
+      }catch(_e){ /* silent */ }
+      return;
+    }
     answerCard.classList.add('hidden');
     answerError.classList.add('hidden');
     answerInsufficient.classList.add('hidden');
@@ -639,13 +651,15 @@
       // Disable while uploading
       btnStartUpload.disabled = true; btnStartUpload.classList.add('opacity-70'); uploadBtnLabel.textContent = 'Se încarcă…';
       logUpload(`Pornit upload (${filesQueue.length} fișiere) → strategie ${uploadStrategy.value}`);
-      const res = await postUpload(filesQueue, uploadStrategy.value);
+      const res = await postUpload(filesQueue, uploadStrategy.value, uploadKind.value || 'book');
       setUploads(res);
       renderUploads(res);
       logUpload(`Terminat upload: ${res.map(x=>`${x.name}=${x.status}`).join(', ')}`);
       // Success toast
       showToast(`Upload finalizat: ${res.filter(x=>x.status==='accepted').length} acceptate, ${res.filter(x=>x.status==='dedup').length} dedup, ${res.filter(x=>x.status==='rejected').length} respinse`);
       btnRetryUpload.classList.add('hidden');
+      // Refresh upload history after successful upload
+      try { await loadUploadHistory(); } catch(_e){}
     }catch(e){
       logUpload('Eroare upload (rețea/timeout). Poți apăsa Reîncearcă.');
       btnRetryUpload.classList.remove('hidden');
@@ -682,6 +696,14 @@
     const stratLetter = state.activeTab === 'EQ_INV' ? 'A' : (state.activeTab === 'EQ_MOM_PEAD' ? 'B' : 'C');
     openJournal({ strategy: stratLetter, rationale: `${payload.answer?.thesis || ''}\nSetup: ${payload.answer?.setup || ''}\nNiveluri: ${payload.answer?.levels || ''}` });
   });
+  toChatInlineBtn?.addEventListener('click', async () => {
+    window.__UI_STATE__.setChatMode(true); syncChatToggle();
+    if (state.lastQuestion){
+      try{ const r = await window.__API__.postChat({ chat_id: state.chat.chatId, collection: state.activeTab, message: state.lastQuestion }); renderInlineChat(r?.messages || []); inlineChatId.textContent = state.chat.chatId ? `ID: ${state.chat.chatId}` : ''; }catch(_e){}
+      document.getElementById('questionInput')?.focus();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 
   // Toggle Mock Mode
   function syncMockUI(){
@@ -701,6 +723,110 @@
   toggleMock.addEventListener('change', () => { setMockMode(toggleMock.checked); syncMockUI(); });
   mToggleMock.addEventListener('change', () => { setMockMode(mToggleMock.checked); syncMockUI(); });
 
+  // Upload History
+  const uploadHistoryList = document.getElementById('uploadHistoryList');
+  async function loadUploadHistory(){
+    if (!uploadHistoryList) return;
+    try{
+      const data = await getUploadHistory(50);
+      const list = Array.isArray(data?.list) ? data.list : [];
+      uploadHistoryList.innerHTML = '';
+      list.forEach(x => {
+        const at = x.created_at ? new Date(x.created_at).toLocaleString() : '—';
+        const row = document.createElement('div'); row.className = 'rounded-lg border bg-white px-2 py-2 text-xs flex items-start justify-between';
+        row.innerHTML = `<div class="min-w-0"><div class="font-medium truncate">${x.file_name || x.doc_id}</div><div class="text-gray-500 truncate">${x.collection || '—'} • fragmente: ${x.chunk_count ?? '—'} • embedded: ${x.embedded_count ?? '—'} • ${at}${x.ocr_used ? ' • OCR' : ''}</div></div><div class="ml-2 text-gray-500">${x.inserted_count ?? '—'} ins.</div>`;
+        uploadHistoryList.appendChild(row);
+      });
+      if (!list.length) uploadHistoryList.innerHTML = '<div class="text-xs text-gray-400">—</div>';
+    }catch(e){
+      uploadHistoryList.innerHTML = '<div class="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md inline-flex items-center gap-2"><i data-lucide="circle-alert" class="w-4 h-4"></i>Eroare la încărcarea istoricului.</div>';
+    }
+  }
+
+  // Chat UI
+  const btnChat = document.getElementById('btnChat');
+  const mBtnChat = document.getElementById('mBtnChat');
+  const chatModal = document.getElementById('chatModal');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatForm = document.getElementById('chatForm');
+  const chatInput = document.getElementById('chatInput');
+  const chatIdBadge = document.getElementById('chatIdBadge');
+  function openChat(){ chatModal.classList.remove('hidden'); ensureChatSession(); mountIcons(); }
+  function closeChat(){ chatModal.classList.add('hidden'); }
+  document.querySelectorAll('[data-close-chat]').forEach(b => b.addEventListener('click', closeChat));
+  btnChat?.addEventListener('click', openChat); mBtnChat?.addEventListener('click', openChat);
+
+  async function ensureChatSession(){
+    if (!state.chat.chatId){
+      try{ const r = await window.__API__.createChat(); state.chat.chatId = r?.chat_id; chatIdBadge.textContent = state.chat.chatId ? `ID: ${state.chat.chatId}` : ''; }catch(_e){}
+    } else {
+      chatIdBadge.textContent = `ID: ${state.chat.chatId}`;
+      try{ const r = await window.__API__.getChat(state.chat.chatId); renderChat(r?.messages || []); }catch(_e){}
+    }
+  }
+  function renderChat(msgs){
+    chatMessages.innerHTML = '';
+    (msgs||[]).forEach(m => {
+      const row = document.createElement('div');
+      const isUser = (m.role === 'user');
+      row.className = `max-w-[85%] ${isUser? 'ml-auto bg-gray-900 text-white':'bg-gray-100 text-gray-800'} rounded-lg px-3 py-2 text-sm`;
+      row.textContent = m.content || '';
+      chatMessages.appendChild(row);
+    });
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+  chatForm?.addEventListener('submit', async (e) => {
+    e.preventDefault(); const text = chatInput.value.trim(); if (!text) return;
+    // optimistic append
+    const tmp = (state.chat.messages || []).concat([{ role: 'user', content: text }]);
+    renderChat(tmp);
+    chatInput.value = '';
+    try{
+      const r = await window.__API__.postChat({ chat_id: state.chat.chatId, collection: state.activeTab, message: text });
+      state.chat.chatId = r?.chat_id || state.chat.chatId;
+      renderChat(r?.messages || tmp);
+      chatIdBadge.textContent = state.chat.chatId ? `ID: ${state.chat.chatId}` : '';
+    }catch(_e){ /* show error bubble */ const row = document.createElement('div'); row.className='text-xs text-rose-700'; row.textContent='Eroare rețea'; chatMessages.appendChild(row); }
+  });
+
+  // Inline chat controls
+  const toggleChatMode = document.getElementById('toggleChatMode');
+  const toggleChatLabel = document.getElementById('toggleChatLabel');
+  const toggleChatKnob = document.getElementById('toggleChatKnob');
+  const inlineChat = document.getElementById('inlineChat');
+  const inlineChatMsgs = document.getElementById('inlineChatMsgs');
+  const inlineChatId = document.getElementById('inlineChatId');
+
+  function syncChatToggle(){
+    toggleChatMode.checked = state.chatMode;
+    toggleChatLabel.textContent = 'Chat';
+    toggleChatKnob.style.transform = state.chatMode ? 'translateX(16px)' : 'translateX(0px)';
+    inlineChat.classList.toggle('hidden', !state.chatMode);
+    if (state.chatMode) ensureChatSessionInline();
+  }
+
+  async function ensureChatSessionInline(){
+    if (!state.chat.chatId){
+      try{ const r = await window.__API__.createChat(); state.chat.chatId = r?.chat_id; }catch(_e){}
+    }
+    inlineChatId.textContent = state.chat.chatId ? `ID: ${state.chat.chatId}` : '';
+    try{ const r = await window.__API__.getChat(state.chat.chatId); renderInlineChat(r?.messages || []);}catch(_e){}
+  }
+
+  function renderInlineChat(msgs){
+    inlineChatMsgs.innerHTML = '';
+    (msgs||[]).forEach(m => {
+      const row = document.createElement('div');
+      const isUser = (m.role === 'user');
+      row.className = `max-w-[85%] ${isUser? 'ml-auto bg-gray-900 text-white':'bg-gray-100 text-gray-800'} rounded-lg px-3 py-2 text-sm`;
+      row.textContent = m.content || '';
+      inlineChatMsgs.appendChild(row);
+    });
+    inlineChatMsgs.scrollTop = inlineChatMsgs.scrollHeight;
+  }
+
+  toggleChatMode?.addEventListener('change', () => { window.__UI_STATE__.setChatMode(toggleChatMode.checked); syncChatToggle(); });
+
   // Init
   document.addEventListener('DOMContentLoaded', async () => {
     mountIcons();
@@ -709,6 +835,9 @@
     attachInfo();
     btnObservability?.addEventListener('click', openObservability);
     document.getElementById('closeObservability')?.addEventListener('click', closeObservability);
+    // initial load for upload history
+    try { await loadUploadHistory(); } catch(_e){}
+    syncChatToggle();
   });
 })();
 

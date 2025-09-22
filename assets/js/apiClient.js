@@ -33,11 +33,12 @@
     return fetchJson('/api/journal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) });
   }
 
-  async function postUpload(files, strategy){
+  async function postUpload(files, strategy, kind){
     if (state.mockMode) return global.__MOCK_API__.postUpload(files, strategy);
     const form = new FormData();
     (files||[]).forEach(f => form.append('files', f));
     form.append('strategy', strategy);
+    if (kind) form.append('kind', kind);
     return fetchJson('/api/upload', { method: 'POST', body: form });
   }
 
@@ -62,7 +63,27 @@
     return fetchJson('/api/catalog' + (qs.toString() ? ('?' + qs.toString()) : ''));
   }
 
-  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog };
+  async function getUploadHistory(limit){
+    if (state.mockMode) return { list: [] };
+    const qs = new URLSearchParams(); if (limit) qs.set('limit', String(limit));
+    return fetchJson('/api/upload_history' + (qs.toString() ? ('?' + qs.toString()) : ''));
+  }
+
+  // Chat APIs
+  async function createChat(){
+    if (state.mockMode) return { chat_id: 'demo', expires_at: null };
+    return fetchJson('/api/chat/create', { method: 'POST' });
+  }
+  async function getChat(chatId){
+    if (state.mockMode) return { chat_id: chatId || 'demo', messages: [] };
+    return fetchJson(`/api/chat/${encodeURIComponent(chatId)}`);
+  }
+  async function postChat(payload){
+    if (state.mockMode) return { chat_id: payload?.chat_id || 'demo', messages: [{ role: 'user', content: payload?.message||'' }, { role: 'assistant', content: '(mock) răspuns'}] };
+    return fetchJson('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  }
+
+  global.__API__ = { getSettings, postAnswer, getBrief, getJournal, postJournal, postUpload, getKpis, getEvents, getCatalog, getUploadHistory, createChat, getChat, postChat };
 })(window);
 
 
